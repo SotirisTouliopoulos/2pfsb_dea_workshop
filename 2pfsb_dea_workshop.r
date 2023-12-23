@@ -8,9 +8,8 @@ genes_data <- read.delim("~/Raw_common18704genes_antiTNF_normalized.tsv", header
 ## boxplot visualization
 boxplot( genes_data[,2:67] , horizontal=T , las=1 , cex.axis=0.5 )
 
-## option to subsample 
+## option to subsample for CPU/memory issues
 n = 18703
-#n = 100
 genes_data = head(genes_data , n)
 gene_names = genes_data[ , 1]
 
@@ -35,6 +34,7 @@ tukey$group["B_Tg-A_Wt" ,  ]
 tukey$group["B_Tg-A_Wt" , 1]
 tukey$group["B_Tg-A_Wt" , 4]
 
+## Access needed information all by once and store them in a vector
 tukey_data = c(tukey$group["B_Tg-A_Wt" , 1] , tukey$group["B_Tg-A_Wt" , 4] , 
                tukey$group["C_Proph_Ther_Rem-A_Wt" , 1] , tukey$group["C_Proph_Ther_Rem-A_Wt" , 4] ,
                tukey$group["D_Ther_Rem-A_Wt" , 1] , tukey$group["D_Ther_Rem-A_Wt" , 4] , 
@@ -45,24 +45,31 @@ tukey_data
 
 
 ## Recursive anova on all genes
+
+## create an empty dataframe
 anova_table = data.frame()
 
+## for every row (every gene)
 for( i in 1:length(matrixdata[,1] ) ) 
 {
+  ## create dataframe from each row with two columns: expression and group 
   df = data.frame("gene_expression" = matrixdata[i,] , "group" = group)
+  ## apply anova on the dataframe
   geneaov = aov( gene_expression~group , data = df )
+  ## apply tukeys post-hoc test to anova results
   tukey = TukeyHSD(geneaov)
-  
+  ## select specific pairwise comparisons information (WT as control & diff,padj columns)
   tukey_data = c(tukey$group["B_Tg-A_Wt" , 1] , tukey$group["B_Tg-A_Wt" , 4] , 
                  tukey$group["C_Proph_Ther_Rem-A_Wt" , 1] , tukey$group["C_Proph_Ther_Rem-A_Wt" , 4] ,
                  tukey$group["D_Ther_Rem-A_Wt" , 1] , tukey$group["D_Ther_Rem-A_Wt" , 4] , 
                  tukey$group["E_Ther_Hum-A_Wt" , 1] , tukey$group["E_Ther_Hum-A_Wt" , 4] , 
                  tukey$group["F_Ther_Enb-A_Wt" , 1] , tukey$group["F_Ther_Enb-A_Wt" , 4] ,
                  tukey$group["G_Ther_Cim-A_Wt" , 1] , tukey$group["G_Ther_Cim-A_Wt" , 4] )
-  
+  ## append these 12 values as columns to dataframe
   anova_table = rbind( anova_table , tukey_data)
 }
 
+## change column names
 colnames(anova_table) = c("Tg_diff" , "Tg_padj" ,
                           "Proph_Rem_diff" , "Proph_Rem_padj" , 
                           "Rem_diff" , "Rem_padj" , 
@@ -71,11 +78,17 @@ colnames(anova_table) = c("Tg_diff" , "Tg_padj" ,
                           "Cim_diff" , "Cim_padj")
 
 
-## volcano plot, check for transposed dataframe
+
+
+## keep only significant differences (p < 0.05) 
+## categorize them in up / down regulated or no changed
+
+## negative mean diff with WT as control ==> WT mean value higher
 upWT = which(anova_table[,1] < 0 & anova_table[,2] < 0.05)
 downWT = which(anova_table[,1] > 0 & anova_table[,2] < 0.05)
 nochangeWT = which(anova_table[,2] > 0.05 )
 
+## create vector to store changes information
 state = vector(mode="character" , length=length(anova_table[,1]))
 state[upWT] = "up"
 state[downWT] = "down"
@@ -85,6 +98,7 @@ volcano_data = data.frame( anova_table[,1:2] , state=state )
 colnames(volcano_data) = c("Tg_diff" , "Tg_padj" , "state")
 
 library(ggplot2)
+## volcano plot
 ggplot( volcano_data , aes(x=Tg_diff , y=-log10(Tg_padj), colour=state))+
   geom_point()
 
@@ -122,11 +136,13 @@ colnames(DEGs) <- ("Genes")
 # Data frame with all DEGs
 DEGsFrame <- subset(anova_table, select=DEGs$Genes)
 
+
 ## heatmap and hierarchical clustering
 library(gplots)
 heatmap.2(t(DEGsFrame[c(1,3,5,7,9,11),]), col = bluered(100), trace = "none",
           density.info = "none", labCol = c("TG", "REM_P", "REM", "HUM", "ENB","CIM"),
           scale="none" , labRow="" , vline=0 , mar=c(6,2))
+
 
 # kmeans clustering
 library(factoextra)
@@ -154,4 +170,3 @@ colnames(cluster5) <- ("Gene")
 
 cluster6 <- data.frame(rownames(subset(clusters, ClusterNo==6)))
 colnames(cluster6) <- ("Gene")
-
