@@ -1,4 +1,9 @@
 
+## -------
+## Differential Expression Analysis Workshop
+## Part 2
+## -------
+
 ## set working directory
 setwd("~")
 
