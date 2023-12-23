@@ -1,14 +1,14 @@
 
 ## set working directory
-setwd("/home/touliopoulos/project/2pfsb/bioinformatics_workshop")
+setwd("~")
 
 ## load normalized data
-genes_data <- read.delim("./Raw_common18704genes_antiTNF_normalized.tsv", header=T, sep="\t")
+genes_data <- read.delim("~/Raw_common18704genes_antiTNF_normalized.tsv", header=T, sep="\t")
 
 ## boxplot visualization
 boxplot( genes_data[,2:67] , horizontal=T , las=1 , cex.axis=0.5 )
 
-## subsample
+## option to subsample 
 n = 18703
 #n = 100
 genes_data = head(genes_data , n)
