@@ -1,20 +1,23 @@
 
-## -------
-## Differential Expression Analysis Workshop
-## Part 2
-## -------
+library(umap)
+library(ggplot2)
+library(multcomp)
+library(gplots)
+library(factoextra)
+library(dplyr)
 
 ## set working directory
-setwd("~")
+setwd("/home/touliopoulos/project/2pfsb/bioinformatics_workshop")
 
 ## load normalized data
-genes_data <- read.delim("~/Raw_common18704genes_antiTNF_normalized.tsv", header=T, sep="\t")
+genes_data <- read.delim("./Raw_common18704genes_antiTNF_normalized.tsv", header=T, sep="\t")
 
 ## boxplot visualization
 boxplot( genes_data[,2:67] , horizontal=T , las=1 , cex.axis=0.5 )
 
-## option to subsample for CPU/memory issues
+## subsample
 n = 18703
+#n = 100
 genes_data = head(genes_data , n)
 gene_names = genes_data[ , 1]
 
@@ -22,24 +25,28 @@ gene_names = genes_data[ , 1]
 matrixdata = as.matrix(genes_data[1:n , 2:67])
 
 ## create groups
-group = c(rep("A_Wt", 10), rep("B_Tg", 13), rep("C_Proph_Ther_Rem", 3), rep("D_Ther_Rem", 10),
-                rep("E_Ther_Hum", 10), rep("F_Ther_Enb", 10), rep("G_Ther_Cim", 10))
+group = factor(c(rep("A_Wt", 10), rep("B_Tg", 13), rep("C_Proph_Ther_Rem", 3), rep("D_Ther_Rem", 10),
+                rep("E_Ther_Hum", 10), rep("F_Ther_Enb", 10), rep("G_Ther_Cim", 10) ) )
 
 ## anova on first gene
 gene1 = data.frame("gene_expression" = matrixdata[1,] , "group" = group)
 geneaov = aov( gene_expression~group , data = gene1 )
 summary(geneaov)
 
+## calculate mean expression value / group
+group_mean_values = aggregate(gene1$gene_expression , list(gene1$group) , FUN=mean)
+group_mean_values
+
 ## Tukeys post-hoc
-TukeyHSD(geneaov , conf.level = 0.95)
+TukeyHSD(geneaov , conf.level = 0.99)
 
 ## Access specific metrics from Tukeys post-hoc
 tukey = TukeyHSD(geneaov)
+tukey
 tukey$group["B_Tg-A_Wt" ,  ]
 tukey$group["B_Tg-A_Wt" , 1]
 tukey$group["B_Tg-A_Wt" , 4]
 
-## Access needed information all by once and store them in a vector
 tukey_data = c(tukey$group["B_Tg-A_Wt" , 1] , tukey$group["B_Tg-A_Wt" , 4] , 
                tukey$group["C_Proph_Ther_Rem-A_Wt" , 1] , tukey$group["C_Proph_Ther_Rem-A_Wt" , 4] ,
                tukey$group["D_Ther_Rem-A_Wt" , 1] , tukey$group["D_Ther_Rem-A_Wt" , 4] , 
@@ -48,111 +55,189 @@ tukey_data = c(tukey$group["B_Tg-A_Wt" , 1] , tukey$group["B_Tg-A_Wt" , 4] ,
                tukey$group["G_Ther_Cim-A_Wt" , 1] , tukey$group["G_Ther_Cim-A_Wt" , 4] )
 tukey_data
 
+## Dunnett's post-hoc
+dunnett = glht(geneaov , linfct = mcp(group="Dunnett"))
+summary(dunnett)
+modgene = summary(dunnett)
+modgene[[10]]$coefficients
+modgene[[10]]$pvalues
+
+
 
 ## Recursive anova on all genes
-
-## create an empty dataframe
 anova_table = data.frame()
 
-## for every row (every gene)
 for( i in 1:length(matrixdata[,1] ) ) 
 {
-  ## create dataframe from each row with two columns: expression and group 
   df = data.frame("gene_expression" = matrixdata[i,] , "group" = group)
-  ## apply anova on the dataframe
   geneaov = aov( gene_expression~group , data = df )
-  ## apply tukeys post-hoc test to anova results
-  tukey = TukeyHSD(geneaov)
-  ## select specific pairwise comparisons information (WT as control & diff,padj columns)
+  tukey = TukeyHSD(geneaov , conf.level = 0.99)
+  
   tukey_data = c(tukey$group["B_Tg-A_Wt" , 1] , tukey$group["B_Tg-A_Wt" , 4] , 
                  tukey$group["C_Proph_Ther_Rem-A_Wt" , 1] , tukey$group["C_Proph_Ther_Rem-A_Wt" , 4] ,
                  tukey$group["D_Ther_Rem-A_Wt" , 1] , tukey$group["D_Ther_Rem-A_Wt" , 4] , 
                  tukey$group["E_Ther_Hum-A_Wt" , 1] , tukey$group["E_Ther_Hum-A_Wt" , 4] , 
                  tukey$group["F_Ther_Enb-A_Wt" , 1] , tukey$group["F_Ther_Enb-A_Wt" , 4] ,
-                 tukey$group["G_Ther_Cim-A_Wt" , 1] , tukey$group["G_Ther_Cim-A_Wt" , 4] )
-  ## append these 12 values as columns to dataframe
-  anova_table = rbind( anova_table , tukey_data)
+                 tukey$group["G_Ther_Cim-A_Wt" , 1] , tukey$group["G_Ther_Cim-A_Wt" , 4] ,
+                 
+                 tukey$group["C_Proph_Ther_Rem-B_Tg" , 1] , tukey$group["C_Proph_Ther_Rem-B_Tg" , 4] , 
+                 tukey$group["D_Ther_Rem-B_Tg" , 1] , tukey$group["D_Ther_Rem-B_Tg" , 4] ,
+                 tukey$group["E_Ther_Hum-B_Tg" , 1] , tukey$group["E_Ther_Hum-B_Tg" , 4] , 
+                 tukey$group["F_Ther_Enb-B_Tg" , 1] , tukey$group["F_Ther_Enb-B_Tg" , 4] , 
+                 tukey$group["G_Ther_Cim-B_Tg" , 1] , tukey$group["G_Ther_Cim-B_Tg" , 4] )
+  
+  anova_table = rbind( anova_table , tukey_data )
 }
 
-## change column names
-colnames(anova_table) = c("Tg_diff" , "Tg_padj" ,
-                          "Proph_Rem_diff" , "Proph_Rem_padj" , 
-                          "Rem_diff" , "Rem_padj" , 
-                          "Hum_diff" , "Hum_padj" , 
-                          "Enb_diff" , "Enb_padj" , 
-                          "Cim_diff" , "Cim_padj")
+colnames(anova_table) = c("Wt_Tg_diff" , "Wt_Tg_padj" ,
+                          "Wt_Rem_P_diff" , "Wt_Rem_P_padj" , 
+                          "Wt_Rem_diff" , "Wt_Rem_padj" , 
+                          "Wt_Hum_diff" , "Wt_Hum_padj" , 
+                          "Wt_Enb_diff" , "Wt_Enb_padj" , 
+                          "Wt_Cim_diff" , "Wt_Cim_padj" ,
+                          
+                          "Tg_Rem_P_diff" , "Tg_Rem_P_padj" , 
+                          "Tg_Rem_diff" , "Tg_Rem_padj" , 
+                          "Tg_Hum_diff" , "Tg_Hum_padj" , 
+                          "Tg_Enb_diff" , "Tg_Enb_padj" , 
+                          "Tg_Cim_diff" , "Tg_Cim_padj")
+
+## add column with gene names 
+rownames(anova_table) = gene_names
 
 
 
+## volcano plot preparation
+## filter genes based on mean diff and pvalue between wt and tg
+upWT = 0
+downWT = 0
+nochangeWT = 0
 
-## keep only significant differences (p < 0.05) 
-## categorize them in up / down regulated or no changed
+upWT = which(anova_table[,1] < -1.0 & anova_table[,2] < 0.05)
+downWT = which(anova_table[,1] > 1.0 & anova_table[,2] < 0.05)
+nochangeWT = which(anova_table[,2] > 0.05 | (anova_table[,1] > -1.0 & anova_table[,1] < 1.0) )
 
-## negative mean diff with WT as control ==> WT mean value higher
-upWT = which(anova_table[,1] < 0 & anova_table[,2] < 0.05)
-downWT = which(anova_table[,1] > 0 & anova_table[,2] < 0.05)
-nochangeWT = which(anova_table[,2] > 0.05 )
-
-## create vector to store changes information
 state = vector(mode="character" , length=length(anova_table[,1]))
-state[upWT] = "up"
-state[downWT] = "down"
-state[nochangeWT] = "nochange"
+state[upWT] = "up_WT"
+state[downWT] = "down_WT"
+state[nochangeWT] = "nochange_WT"
 
-volcano_data = data.frame( anova_table[,1:2] , state=state )
-colnames(volcano_data) = c("Tg_diff" , "Tg_padj" , "state")
+## identify names of genes differentially expressed between wt and tg
+genes_up_WT = c(rownames(anova_table)[upWT] )
+genes_down_WT = c(rownames(anova_table)[downWT] )
 
-library(ggplot2)
-## volcano plot
-ggplot( volcano_data , aes(x=Tg_diff , y=-log10(Tg_padj), colour=state))+
+## union of degs between wt and tg
+deg_wt_tg = c( genes_up_WT , genes_down_WT )
+
+## subset dataframe based on specific degs
+deg_wt_tg_df = subset( genes_data , Gene %in% deg_wt_tg )
+
+## dataframe for volcano plot
+volcano_data = data.frame( "padj" = anova_table[,2] , "DisWt" = anova_table[,1] , state=state )
+
+ggplot( volcano_data , aes(x=DisWt , y=-log10(padj), colour=state))+
   geom_point()
 
 
-## transpose dataframe if needed
-anova_table = t(anova_table)
 
-## add gene names to first column
-colnames(anova_table) = gene_names
+## filter genes betwenn tg and all therapies
+upTHER = 0
+downTHER = 0
+nochangeTHER = 0
 
-# Filtering DEGs with adjusted p-value <= 0.05 and log(FoldChange) >= 1
-DegTG <- anova_table[1:2, which(abs(anova_table["Tg_diff",])>=0 &
-                            anova_table["Tg_padj",] <= 0.05)]
-DegRemP <- anova_table[3:4, which(abs(anova_table["Proph_Rem_diff",])>=0 &
-                             anova_table["Proph_Rem_padj",]<=0.05)]
-DegREM <- anova_table[5:6, which(abs(anova_table["Rem_diff",])>=0 &
-                             anova_table["Rem_padj",]<=0.05)]
-DegHUM <- anova_table[7:8, which(abs(anova_table["Hum_diff",])>=0 &
-                             anova_table["Hum_padj",]<=0.05)]
-DegENB <- anova_table[9:10, which(abs(anova_table["Enb_diff",])>=0 &
-                              anova_table["Enb_padj",]<=0.05)]
-DegCIM <- anova_table[9:10, which(abs(anova_table["Cim_diff",])>=0 &
-                              anova_table["Cim_padj",]<=0.05)]
+upTHER = which( (anova_table[,13] < -1.0 & anova_table[,14] < 0.05) | 
+                (anova_table[,15] < -1.0 & anova_table[,16] < 0.05) | 
+                (anova_table[,17] < -1.0 & anova_table[,18] < 0.05) |
+                (anova_table[,19] < -1.0 & anova_table[,20] < 0.05) |
+                (anova_table[,21] < -1.0 & anova_table[,22] < 0.05) )
 
-# Union of all the DEGs
-DEGs <-data.frame(union(union(union(union(union(colnames(DegTG),
-                                                colnames(DegRemP)),
-                                                colnames(DegREM)),
-                                                colnames(DegHUM)),
-                                                colnames(DegENB)),
-                                                colnames(DegCIM)))
+downTHER = which( (anova_table[,13] > 1.0 & anova_table[,14] < 0.05) | 
+                  (anova_table[,15] > 1.0 & anova_table[,16] < 0.05) | 
+                  (anova_table[,17] > 1.0 & anova_table[,18] < 0.05) |
+                  (anova_table[,19] > 1.0 & anova_table[,20] < 0.05) |
+                  (anova_table[,21] > 1.0 & anova_table[,22] < 0.05) )
 
-colnames(DEGs) <- ("Genes")
+nochangeTHER = which( ( (anova_table[,13] > -1.0 & anova_table[,13] < 1.0) | anova_table[,14] > 0.05) |
+                  ( (anova_table[,15] > -1.0 & anova_table[,15] < 1.0) | anova_table[,16] > 0.05) |
+                  ( (anova_table[,17] > -1.0 & anova_table[,17] < 1.0) | anova_table[,18] > 0.05) |
+                  ( (anova_table[,19] > -1.0 & anova_table[,19] < 1.0) | anova_table[,20] > 0.05) |
+                  ( (anova_table[,21] > -1.0 & anova_table[,21] < 1.0) | anova_table[,22] > 0.05) )
+                  
+state = vector(mode="character" , length=length(anova_table[,1]))
+state[upTHER] = "up_THER"
+state[downTHER] = "down_THER"
+state[nochangeTHER] = "nochange_THER"
 
-# Data frame with all DEGs
-DEGsFrame <- subset(anova_table, select=DEGs$Genes)
+## identify names of genes differentially expressed between wt and tg
+genes_up_THER = c(rownames(anova_table)[upTHER] )
+genes_down_THER = c(rownames(anova_table)[downTHER] )
+
+# union of degs between tg and ther
+deg_tg_ther = c( genes_up_THER , genes_down_THER )
+
+## subset dataframe based on specific degs
+deg_tg_ther_df = subset( genes_data , Gene %in% deg_tg_ther )
+
+
+
+## export subset dataframes to files
+write.table( deg_wt_tg_df , file="./deg_wt_tg.tsv" , sep="\t" , quote=FALSE)
+write.table( deg_tg_ther_df , file="./deg_tg_ther.tsv" , sep="\t" , quote=FALSE)
+
+
+
+## apply gene names from first column as rownames
+rownames(deg_wt_tg_df) = deg_wt_tg_df[,1]
+## remove first column
+deg_wt_tg_df = deg_wt_tg_df[,-1]
+
+## genes must be represented in columns
+deg_wt_tg_df = t(deg_wt_tg_df)
+
+## keep only observations from wt and tg
+deg_wt_tg_df = deg_wt_tg_df[ 1:23 , ]
+
+## apply umap, after dataframe transposition columns must represent genes
+deg_wt_tg_df.umap = umap( deg_wt_tg_df , n_components=2 , random_state=15)
+
+## keep the numeric dimensions
+deg_wt_tg_df.umap = deg_wt_tg_df.umap[["layout"]]
+
+## group wt and tg as character and not factor
+group = c(rep("A_Wt", 10), rep("B_Tg", 13) )
+
+## create final dataframe with dimensions and group for plotting
+deg_wt_tg_df.umap = cbind(deg_wt_tg_df.umap,group)
+deg_wt_tg_df.umap = data.frame(deg_wt_tg_df.umap)
+
+## plot umap results
+ggplot(deg_wt_tg_df.umap , aes(x=V1,y=V2,color=group))+
+  geom_point()+
+  theme(axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks = element_blank() )
+
+
+
+## combine degs from tg and ther
+DEGs = c( deg_tg_ther , deg_wt_tg )
+
+# Data frame with all DEGs for clustering
+DEGsFrame = anova_table[rownames(anova_table) %in% DEGs , ]
+DEGsFrame = as.matrix(DEGsFrame)
+
 
 
 ## heatmap and hierarchical clustering
-library(gplots)
-heatmap.2(t(DEGsFrame[c(1,3,5,7,9,11),]), col = bluered(100), trace = "none",
+heatmap.2(DEGsFrame[  , c(1,3,5,7,9,11) ], col = bluered(100), trace = "none",
           density.info = "none", labCol = c("TG", "REM_P", "REM", "HUM", "ENB","CIM"),
           scale="none" , labRow="" , vline=0 , mar=c(6,2))
 
 
+
 # kmeans clustering
-library(factoextra)
-kmeans <- kmeans(t(DEGsFrame[c(1,3,5,7,9,11),]), centers=6)
-fviz_cluster(kmeans, data = t(DEGsFrame[c(1,3,5,7,9,11),]), geom="point", show.clust.cent=TRUE)
+kmeans <- kmeans(DEGsFrame[ , c(1,3,5,7,9,11) ] , centers=6)
+fviz_cluster(kmeans, data = (DEGsFrame[ , c(1,3,5,7,9,11) ] ), geom="point", show.clust.cent=TRUE)
 
 # Extract genes from clusters
 clusters <- data.frame(kmeans$cluster)
@@ -161,17 +246,3 @@ colnames(clusters) <- ("ClusterNo")
 cluster1 <- data.frame(rownames(subset(clusters, ClusterNo==1)))
 colnames(cluster1) <- ("Gene")
 
-cluster2 <- data.frame(rownames(subset(clusters, ClusterNo==2)))
-colnames(cluster2) <- ("Gene")
-
-cluster3 <- data.frame(rownames(subset(clusters, ClusterNo==3)))
-colnames(cluster3) <- ("Gene")
-
-cluster4 <- data.frame(rownames(subset(clusters, ClusterNo==4)))
-colnames(cluster4) <- ("Gene")
-
-cluster5 <- data.frame(rownames(subset(clusters, ClusterNo==5)))
-colnames(cluster5) <- ("Gene")
-
-cluster6 <- data.frame(rownames(subset(clusters, ClusterNo==6)))
-colnames(cluster6) <- ("Gene")
