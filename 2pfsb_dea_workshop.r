@@ -15,11 +15,63 @@ genes_data <- read.delim("./Raw_common18704genes_antiTNF_normalized.tsv", header
 ## boxplot visualization
 boxplot( genes_data[,2:67] , horizontal=T , las=1 , cex.axis=0.5 )
 
-## subsample
+## select number of rows for subsample
 n = 18703
-#n = 100
 genes_data = head(genes_data , n)
+
+## store gene names
 gene_names = genes_data[ , 1]
+
+
+
+## prepare dataframe for UMAP dimension reduction
+## we check if samples are separated in 2 dimensions
+
+## keep only wt and tg samples
+wt_tg_df = genes_data[, 1:24]
+## apply gene names as rownames
+rownames(wt_tg_df) = wt_tg_df[,1]
+## remove gene names as first column
+wt_tg_df = wt_tg_df[,-1]
+
+#after dataframe transposition columns must represent genes
+wt_tg_df = t(wt_tg_df)
+
+## UMAP dimension reduction for wt and tg samples
+wt_tg_df.umap = umap( wt_tg_df , n_components=2 , random_state=15)
+
+## keep the numeric dimensions
+wt_tg_df.umap = wt_tg_df.umap[["layout"]]
+
+#create vector with groups
+group = c(rep("A_Wt", 10), rep("B_Tg", 13) )
+
+## create final dataframe with dimensions and group for plotting
+wt_tg_df.umap = cbind(wt_tg_df.umap,group)
+wt_tg_df.umap = data.frame(wt_tg_df.umap)
+
+## plot UMAP results
+ggplot(wt_tg_df.umap , aes(x=V1,y=V2,color=group))+
+  geom_point()+
+  theme(axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks = element_blank() )
+
+
+
+## PCA dimension reduction
+wt_tg_df.pca = prcomp(wt_tg_df , scale. = FALSE)
+summary(wt_tg_df.pca)
+wt_tg_df.pca = data.frame("PC1" = wt_tg_df.pca$x[,1] , "PC2" = wt_tg_df.pca$x[,2] , "group" = group)
+
+## plot PCA results
+ggplot(wt_tg_df.pca , aes(x=PC1,y=PC2,color=group))+
+  geom_point()+
+  theme(axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks = element_blank() )
+
+
 
 ## create matrix by excluding rownames and colnames
 matrixdata = as.matrix(genes_data[1:n , 2:67])
@@ -107,16 +159,17 @@ rownames(anova_table) = gene_names
 
 
 
-## volcano plot preparation
-## filter genes based on mean diff and pvalue between wt and tg
+## volcano plot dataframe preparation for wt and tg degs
 upWT = 0
 downWT = 0
 nochangeWT = 0
 
+## filter genes based on mean diff and pvalue between wt and tg
 upWT = which(anova_table[,1] < -1.0 & anova_table[,2] < 0.05)
 downWT = which(anova_table[,1] > 1.0 & anova_table[,2] < 0.05)
 nochangeWT = which(anova_table[,2] > 0.05 | (anova_table[,1] > -1.0 & anova_table[,1] < 1.0) )
 
+## create vector to store states for each gene
 state = vector(mode="character" , length=length(anova_table[,1]))
 state[upWT] = "up_WT"
 state[downWT] = "down_WT"
@@ -135,16 +188,18 @@ deg_wt_tg_df = subset( genes_data , Gene %in% deg_wt_tg )
 ## dataframe for volcano plot
 volcano_data = data.frame( "padj" = anova_table[,2] , "DisWt" = anova_table[,1] , state=state )
 
+## plot pvalues with mean diffs
 ggplot( volcano_data , aes(x=DisWt , y=-log10(padj), colour=state))+
   geom_point()
 
 
 
-## filter genes betwenn tg and all therapies
+## volcano plot dataframe preparation for tg-therapies degs
 upTHER = 0
 downTHER = 0
 nochangeTHER = 0
 
+## filter genes based on mean diff and pvalue between th and therapies
 upTHER = which( (anova_table[,13] < -1.0 & anova_table[,14] < 0.05) | 
                 (anova_table[,15] < -1.0 & anova_table[,16] < 0.05) | 
                 (anova_table[,17] < -1.0 & anova_table[,18] < 0.05) |
@@ -162,20 +217,20 @@ nochangeTHER = which( ( (anova_table[,13] > -1.0 & anova_table[,13] < 1.0) | ano
                   ( (anova_table[,17] > -1.0 & anova_table[,17] < 1.0) | anova_table[,18] > 0.05) |
                   ( (anova_table[,19] > -1.0 & anova_table[,19] < 1.0) | anova_table[,20] > 0.05) |
                   ( (anova_table[,21] > -1.0 & anova_table[,21] < 1.0) | anova_table[,22] > 0.05) )
-                  
+
+## create vector to store states for each gene
 state = vector(mode="character" , length=length(anova_table[,1]))
 state[upTHER] = "up_THER"
 state[downTHER] = "down_THER"
 state[nochangeTHER] = "nochange_THER"
 
-## identify names of genes differentially expressed between wt and tg
+## identify names of genes differentially expressed between tg and therapies
 genes_up_THER = c(rownames(anova_table)[upTHER] )
 genes_down_THER = c(rownames(anova_table)[downTHER] )
 
-# union of degs between tg and ther
 deg_tg_ther = c( genes_up_THER , genes_down_THER )
 
-## subset dataframe based on specific degs
+## subset dataframe based on these degs
 deg_tg_ther_df = subset( genes_data , Gene %in% deg_tg_ther )
 
 
@@ -186,8 +241,9 @@ write.table( deg_tg_ther_df , file="./deg_tg_ther.tsv" , sep="\t" , quote=FALSE)
 
 
 
-## apply gene names from first column as rownames
+## UMAP & PCA prep for wt and tg dataframe.
 rownames(deg_wt_tg_df) = deg_wt_tg_df[,1]
+
 ## remove first column
 deg_wt_tg_df = deg_wt_tg_df[,-1]
 
@@ -197,7 +253,7 @@ deg_wt_tg_df = t(deg_wt_tg_df)
 ## keep only observations from wt and tg
 deg_wt_tg_df = deg_wt_tg_df[ 1:23 , ]
 
-## apply umap, after dataframe transposition columns must represent genes
+## apply UMAP for wt and tg, after dataframe transposition columns must represent genes
 deg_wt_tg_df.umap = umap( deg_wt_tg_df , n_components=2 , random_state=15)
 
 ## keep the numeric dimensions
@@ -212,6 +268,67 @@ deg_wt_tg_df.umap = data.frame(deg_wt_tg_df.umap)
 
 ## plot umap results
 ggplot(deg_wt_tg_df.umap , aes(x=V1,y=V2,color=group))+
+  geom_point()+
+  theme(axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks = element_blank() )
+
+
+
+## dimension reduction with PCA for wt and tg dataframe
+deg_wt_tg_df.pca = prcomp(deg_wt_tg_df , scale. = FALSE)
+summary(deg_wt_tg_df.pca)
+deg_wt_tg_df.pca = data.frame("PC1" = deg_wt_tg_df.pca$x[,1] , "PC2" = deg_wt_tg_df.pca$x[,2] , "group" = group)
+
+ggplot(deg_wt_tg_df.pca , aes(x=PC1,y=PC2,color=group))+
+  geom_point()+
+  theme(axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks = element_blank() )
+
+
+
+## UMAP & PCA prep for tg and therapies dataframe.
+rownames(deg_tg_ther_df) = deg_tg_ther_df[,1]
+
+## remove first column
+deg_tg_ther_df = deg_tg_ther_df[,-1]
+
+## genes must be represented in columns
+deg_tg_ther_df = t(deg_tg_ther_df)
+
+## keep only observations from wt and tg
+deg_tg_ther_df = deg_tg_ther_df[ 24:66 , ]
+
+## apply umap, after dataframe transposition columns must represent genes
+deg_tg_ther_df.umap = umap( deg_tg_ther_df , n_components=2 , random_state=15)
+
+## keep the numeric dimensions
+deg_tg_ther_df.umap = deg_tg_ther_df.umap[["layout"]]
+
+## group wt and tg as character and not factor
+group = c(rep("C_Proph_Ther_Rem", 3), rep("D_Ther_Rem", 10),
+                 rep("E_Ther_Hum", 10), rep("F_Ther_Enb", 10), rep("G_Ther_Cim", 10) )
+
+## create final dataframe with dimensions and group for plotting
+deg_tg_ther_df.umap = cbind(deg_tg_ther_df.umap,group)
+deg_tg_ther_df.umap = data.frame(deg_tg_ther_df.umap)
+
+## plot umap results
+ggplot(deg_tg_ther_df.umap , aes(x=V1,y=V2,color=group))+
+  geom_point()+
+  theme(axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks = element_blank() )
+
+
+
+## dimension reduction with PCA for tg-therapies dataframe
+deg_tg_ther_df.pca = prcomp(deg_tg_ther_df , scale. = FALSE)
+summary(deg_tg_ther_df.pca)
+deg_tg_ther_df.pca = data.frame("PC1" = deg_tg_ther_df.pca$x[,1] , "PC2" = deg_tg_ther_df.pca$x[,2] , "group" = group)
+
+ggplot(deg_tg_ther_df.pca , aes(x=PC1,y=PC2,color=group))+
   geom_point()+
   theme(axis.text.x = element_blank(),
         axis.text.y = element_blank(),
