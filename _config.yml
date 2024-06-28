@@ -1,5 +1,5 @@
-title: Sotiris Touliopoulos
+#title:
 logo: /img/2pfsb_logo.png
-description: Bioinformatician
-show_downloads: true
+description: This workshop was presented at the 2nd Panhellenic Conference of Students Bioscientists (2PFSB)
+#show_downloads: true
 theme: jekyll-theme-minimal
