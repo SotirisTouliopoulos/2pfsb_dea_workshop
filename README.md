@@ -51,6 +51,8 @@ genes_data = as.matrix(genes_data)
 genes_data = normalize.quantiles(genes_data,copy=TRUE)
 genes_data = data.frame(genes_data)
 ```
+![table1](/img/gene_expression_data_table2.png)
+
 
 ### Set the gene and sample names to the normalised dataframe
 ```
@@ -58,9 +60,13 @@ colnames(genes_data) = Sample
 rownames(genes_data) = Gene
 ```
 
+
 ### Boxplot visualization after normalization
 ```
 boxplot( genes_data, horizontal=T , las=1 , cex.axis=0.5 )
 ```
+![table1](/img/gene_expression_boxplot2.png)
+
+
 
 
