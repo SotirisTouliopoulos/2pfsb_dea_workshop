@@ -12,18 +12,22 @@ library(RColorBrewer)
 library(factoextra)
 ```
 
-### Loading od data with "read.delim" function
+### Loading of the gene expression data with "read.delim" function
 ```
 genes_data = read.delim("./Raw_common18704genes_antiTNF.tsv",
                         header=T,
                         row.names = 1,
                         sep="\t")
 ```
+![table1](/img/gene_expression_data_table.png)
+
 
 ### Get the dimensions of the loaded dataframe
 ```
 dim(genes_data)
 ```
+18703    66
+
 
 ### Visualize gene expression distributions with boxplots
 ```
@@ -32,6 +36,8 @@ boxplot(genes_data,
         las=1,
         cex.axis=0.5 )
 ```
+![boxplot](/img/boxplot.png)
+
 
 ### Save gene and sample names in a vector
 ```
