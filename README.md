@@ -38,6 +38,7 @@ boxplot(genes_data,
         cex.axis=0.5 )
 ```
 The boxplot:
+
 ![2](/img/gene_expression_boxplot.png)
 
 
@@ -73,6 +74,7 @@ boxplot(genes_data,
         cex.axis=0.5 )
 ```
 The boxplot after normalization:
+
 ![4](/img/gene_expression_boxplot2.png)
 
 
