@@ -67,7 +67,10 @@ rownames(genes_data) = Gene
 
 ### Boxplot visualization after normalization
 ```
-boxplot( genes_data, horizontal=T , las=1 , cex.axis=0.5 )
+boxplot(genes_data,
+        horizontal=T,
+        las=1,
+        cex.axis=0.5 )
 ```
 The boxplot after normalization:
 ![4](/img/gene_expression_boxplot2.png)
