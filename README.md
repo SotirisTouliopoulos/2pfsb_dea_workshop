@@ -12,6 +12,8 @@ library(RColorBrewer)
 library(factoextra)
 ```
 
+
+
 ### Loading of the gene expression data with "read.delim" function
 ```
 genes_data = read.delim("./Raw_common18704genes_antiTNF.tsv",
@@ -20,7 +22,9 @@ genes_data = read.delim("./Raw_common18704genes_antiTNF.tsv",
                         sep="\t")
 ```
 The initial table of the data:
+
 ![1](/img/gene_expression_data_table.png)
+
 
 
 ### Get the dimensions of the loaded dataframe
@@ -28,6 +32,7 @@ The initial table of the data:
 dim(genes_data)
 ```
 Dimensions are: 18703 rows and 66 columns
+
 
 
 ### Visualize gene expression distributions with boxplots
@@ -42,6 +47,7 @@ The boxplot:
 ![2](/img/gene_expression_boxplot.png)
 
 
+
 ### Save gene and sample names in a vector
 ```
 Gene = rownames(genes_data)
@@ -49,21 +55,20 @@ Sample = colnames(genes_data)
 ```
 
 
+
 ### Normalize data to make distributions comparable
 ```
 genes_data = as.matrix(genes_data)
 genes_data = normalize.quantiles(genes_data,copy=TRUE)
 genes_data = data.frame(genes_data)
-```
-The normalized table of the data:
-![3](/img/gene_expression_data_table2.png)
 
-
-### Set the gene and sample names to the normalised dataframe
-```
 colnames(genes_data) = Sample
 rownames(genes_data) = Gene
 ```
+The normalized table of the data:
+
+![3](/img/gene_expression_data_table2.png)
+
 
 
 ### Boxplot visualization after normalization
