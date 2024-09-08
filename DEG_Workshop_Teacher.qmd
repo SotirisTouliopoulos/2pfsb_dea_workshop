@@ -1,0 +1,1562 @@
+---
+title: "Differential Expression Analysis: diving into transcriptome using R & Python"
+subtitle: "2ο Πανελλήνιο Φοιτητικό Συνέδριο Βιοεπιστημόνων"
+title-block-banner: "#94ba42"
+
+author: 
+  - name: "Sotiris Touliopoulos"
+    affiliations: "Department of Molecular Biology & Genetics (DUTh)"
+  - name: "Konstantinos Daniilidis"
+    affiliations: "Department of Computer Science and Biomedical Informatics (UTH)"
+  - name: "Christos - Spyridon Koulouris"
+    affiliations: "Department of Electrical and Computer Engineering (NTUA)"
+
+toc: true
+toc-location: left
+toc-depth: 4
+number-sections: true
+format: html
+editor: visual
+bibliography: references.bib
+---
+
+## Part 1 - Introduction
+
+Advancements in high-throughput sequencing technologies have revolutionized our understanding of gene expression, providing a comprehensive view of cellular processes. Differential gene expression analysis plays a pivotal role in identifying genes that are significantly altered between different experimental conditions, shedding light on biological mechanisms underlying diverse phenotypes.
+
+This notebook serves as a practical guide to conduct a differential analysis of gene expression using R, a powerful programming language for statistical computing and graphics. Focused on employing Analysis of Variance (ANOVA), a robust statistical technique, the notebook will walk you through the step-by-step process of comparing gene expression levels across multiple conditions. ANOVA allows for the simultaneous assessment of variations within and between groups, enabling the identification of genes with expression patterns that are significantly different across experimental conditions.
+
+In the last part of the workshop, an attempt will be made to use machine learning algorithms for treatment prediction, based on gene expression data, for research purposes.
+
+### Microarrays
+
+A microarray is a laboratory tool used to detect the expression of thousands of genes at the same time. DNA microarrays are microscope slides that are printed with thousands of tiny spots in defined positions, with each spot containing a known DNA sequence or gene. Often, these slides are referred to as gene chips or DNA chips. The DNA molecules attached to each slide act as probes to detect gene expression, which is also known as the transcriptome or the set of messenger RNA (mRNA) transcripts expressed by a group of genes.
+
+To perform a microarray analysis, mRNA molecules are typically collected from both an experimental sample and a reference sample. For example, the reference sample could be collected from a healthy individual, and the experimental sample could be collected from an individual with a disease like cancer. The two mRNA samples are then converted into complementary DNA (cDNA), and each sample is labeled with a fluorescent probe of a different color. For instance, the experimental cDNA sample may be labeled with a red fluorescent dye, whereas the reference cDNA may be labeled with a green fluorescent dye. The two samples are then mixed together and allowed to bind to the microarray slide. The process in which the cDNA molecules bind to the DNA probes on the slide is called hybridization. Following hybridization, the microarray is scanned to measure the expression of each gene printed on the slide. If the expression of a particular gene is higher in the experimental sample than in the reference sample, then the corresponding spot on the microarray appears red. In contrast, if the expression in the experimental sample is lower than in the reference sample, then the spot appears green. Finally, if there is equal expression in the two samples, then the spot appears yellow. The data gathered through microarrays can be used to create gene expression profiles, which show simultaneous changes in the expression of many genes in response to a particular condition or treatment. [@microarray-2024-03-14]
+
+![](images/An-overview-of-DNA-microarray-technology-RNA-is-isolated-from-the-control-and-the-target.png){fig-align="center"}
+
+[@Afzal_2015]
+
+Microarray Data is stored in a matrix of specific format like the one represented in the table:
+
+| Gene id | Sample 1 | Sample 2 | Sample 3 | Sample 4 |
+|---------|----------|----------|----------|----------|
+| Gene 1  | 1,1      | 1,2      | 1,3      | 1,4      |
+| Gene 2  | 2,1      | 2,2      | 2,3      | 2,4      |
+| Gene 3  | 3,1      | 3,2      | 3,3      | 3,4      |
+
+### Anti-TNF agents
+
+A number of anti-TNF drugs are being used in the treatment of inflammatory autoimmune diseases, such as Rheumatoid Arthritis and Crohn's Disease. Despite their wide use there has been, to date, no detailed analysis of their effect on the affected tissues at a transcriptome level. Four different anti-TNF drugs were applied on an established mouse model of inflammatory polyarthritis and they collected a large number of independent biological replicates from the synovial tissue of healthy, diseased and treated animals. [@karagianni2019]
+
+### Format of Data
+
+Every data analysis process starts with understanding the format of the data and what it contains, in order to understand the problem and how to analyze it. Our data include information about genes and different experimental conditions in hTNFTg mouse model of inflammatory polyarthritis [@karagianni2019]. Here's a breakdown of the dataset column names:
+
+1.  **Gene**: This column contains the gene names.
+
+2.  **A_Wt, A_Wt.1, A_Wt.2, ..., A_Wt.9**: These columns represent samples under wild type condition (A_Wt), which is the initial state, without the administration of any drug. Numbers indicate different replicates.
+
+3.  **B_Tg, B_Tg.1, B_Tg.2, ..., B_Tg.11**: Similar to the A_Wt conditions, these columns represent samples under transgenic condition, with different replicates.
+
+4.  **C_Proph_Ther_Rem, C_Proph_Ther_Rem.1, C_Proph_Ther_Rem.2**: The Proph_Ther_Rem condition is the intervention of infliximab at a prophylactic stage, starting from 3 weeks of age of mice.
+
+5.  **D_Ther_Rem, D_Ther_Rem.1, D_Ther_Rem.2, ..., D_Ther_Rem.9**: Samples under infliximab (Remicade) condition.
+
+6.  **E_Ther_Hum, E_Ther_Hum.1, E_Ther_Hum.2, ..., E_Ther_Hum.9**: Samples under adalimumab (Humira) condition.
+
+7.  **F_Ther_Enb, F_Ther_Enb.1, F_Ther_Enb.2, ..., F_Ther_Enb.9**: Samples under etanercept (Enbrel) condition.
+
+8.  **G_Ther_Cim, G_Ther_Cim.1, G_Ther_Cim.2, ..., G_Ther_Cim.9**: Samples under certolizumab pegol (Cimzia) condition.
+
+Each condition has multiple replicates denoted by the numbers following the condition abbreviation. This dataset structure is typical for differential gene expression analysis, where each column represents a different sample or replicate, and each row represents a gene with corresponding expression values across different conditions.
+
+### Analysis Pipeline
+
+![](images/pipeline.jpg){fig-align="center"}
+
+[@nikolaou2015]
+
+## Methodology
+
+Firstly, we load some necessary R packages, that will facilitate our analysis. These packages concern some visualization libraries, such as `ggplot2`, `factoextra` and `kableExtra`, various machine learning algorithm packages, such as `caret` or `randomForest` and data analysis packages, such as `dplyr`.
+
+```{r}
+#| include: false
+#| eval: false
+
+# Code to install packages
+if (!require("BiocManager", quietly = TRUE))
+  install.packages("BiocManager")
+BiocManager::install("preprocessCore")
+
+install.packages("umap")
+install.packages("ggplot2")
+install.packages("multcomp")
+install.packages("gplots")
+install.packages("factoextra")
+install.packages("dplyr")
+install.packages("kableExtra")
+install.packages("gprofiler2")
+install.packages("randomForest")
+install.packages("caret")
+install.packages("cowplot")
+install.packages("RColorBrewer")
+install.packages("plotly")
+```
+
+```{r setup}
+#| output: asis
+##---- This script was made for educational purposes ----##
+##---- Data was taken after request from a published ----##
+##---- Research Article N.Karagianni et al.(2019)    ----##
+##---- https://doi.org/10.1371/journal.pcbi.1006933  ----##
+
+knitr::opts_chunk$set(message = FALSE, warning = FALSE)
+options(warn = -1)
+
+library(preprocessCore)
+library(umap)
+library(ggplot2)
+library(multcomp)
+library(gplots)
+library(factoextra)
+library(dplyr)
+library(kableExtra)
+library(gprofiler2)
+library(randomForest)
+library(caret)
+library(cowplot)
+library(RColorBrewer)
+library(plotly)
+```
+
+### Exploratory Data Analysis (EDA)
+
+Exploratory Data Analysis is an approach to analyzing data sets to summarize their main characteristics and it involves a comprehensive examination of the underlying structure and characteristics of a dataset. It is performed to understand the biological/biomedical data, the context about them, understand the variables and their interrelationships, and formulate hypotheses that could be useful in building predictive models and for further analysis.
+
+```{r load_data}
+
+# Set Working Directory
+
+# path to working directory for Windows users
+#setwd("C:\\Users\\USER\\Desktop\\")
+
+# path to working directory for Linux/Mac users
+setwd("~")
+
+# read file
+genes_data = read.delim(
+                        # insert file name
+                        file = "Raw_common18704genes_antiTNF.tsv",
+                        # try "T" or "F"
+                        header = T,
+                        # try "1" or "0" 
+                        row.names = 1,
+                        # try "\t" or "," 
+                        sep = "\t"
+                       )
+
+
+# plot a boxplot
+boxplot(
+        genes_data, 
+        # try "T" or "F"
+        horizontal= T, 
+        # try "0" or "1"
+        las= 1, 
+        # try "0.2" or "0.5"
+        cex.axis= 0.5
+       )
+
+
+# Number of rows
+n = nrow(genes_data)
+
+# Dataset Dimensions
+dim(genes_data)
+
+
+# Show head of the data frame
+kable(head(genes_data)) |>
+  kable_styling(bootstrap_options = c("striped")) |>
+  scroll_box(width = "100%", height = "100%") |>
+  kable_classic()
+
+
+# Keep gene and sample names
+Gene = rownames(genes_data)
+Sample = colnames(genes_data)
+```
+
+#### Missing Values
+
+Then, we check for missing values in the data. If there are any, we will need to decide how to handle them, probably by removing the genes with missing values.
+
+```{r missing_values}
+# Check genes_data for missing values
+colSums(is.na(genes_data))
+
+
+# Alternative method for total sum of missing values
+# apply takes as input a dataframe and a function to apply to each row (1) or column (2)
+sum(apply(genes_data, 2, function(x) any(is.na(x))))
+```
+
+#### Data Distribution
+
+Understanding the distribution of the data is a fundamental aspect of EDA. Examining data distribution provides insights into the central tendencies, variabilities, and patterns within the dataset. A thorough exploration of data distribution aids in making informed decisions about appropriate statistical analyses and understanding the inherent variability, which is crucial for formulating hypotheses and guiding subsequent modeling or inferential procedures. As such, a detailed assessment of data distribution is a foundational step in unraveling the complexities of any dataset during the EDA process.
+
+```{r}
+# Adjust the layout and margins as needed
+par(mfrow = c(8, 9), mar = c(1, 1, 2.5, 1))
+
+for (col in colnames(genes_data)) {
+  plot(density(genes_data[[col]]), 
+       main = col,
+       xlab = col, col = "#009AEF", lwd = 2)
+}
+
+```
+
+```{r}
+genes_data %>% 
+  select_if(is.numeric) %>%
+  apply(2, function(x) round(summary(x), 3)) %>% 
+  kbl() %>%
+  kable_styling(bootstrap_options = c("striped", "bordered")) %>% 
+  kable_classic() %>%
+  scroll_box(width = "100%", height = "100%")
+
+
+calculate_metrics = function(data.frame) {
+  max <- apply(data.frame, 2, max)
+  min <- apply(data.frame, 2, min)
+  mean <- (max + min) / 2
+
+  dt_matrix = data.frame(name = colnames(data.frame),
+                         min = as.numeric(as.character(min)),
+                         max = as.numeric(as.character(max)),
+                         mean = as.numeric(as.character(mean)))
+  return(dt_matrix)
+}
+
+# Calculate metrics for each condition
+c_metrics = calculate_metrics(genes_data)
+c_metrics
+```
+
+### Data Normalization
+
+Before running UMAP, we execute quantile normalization in the data. Quantile normalization is a preprocessing step commonly used when comparing multiple samples or conditions. It is necessary because ANOVA assumes normally distributed residuals and homogeneity of variances, meaning that the variance is roughly the same across all groups.
+
+```{r normalization}
+
+# convert dataframe to matrix
+# try "as.matrix" or "as.data.frame"
+genes_data = as.matrix(genes_data)
+
+# normalize data
+genes_data = normalize.quantiles(genes_data , copy=TRUE)
+
+# convert matrix to dataframe
+# try "data.frame" or "matrix"
+genes_data = data.frame(genes_data)
+
+# add column names to dataframe
+# try "colnames" or "rownames" [1] and "Sample" or "Gene" [2]
+colnames(genes_data) = Sample
+
+# add row names to dataframe
+# try "colnames" or "rownames" [1] and "Sample" or "Gene" [2]
+rownames(genes_data) = Gene
+
+
+# Boxplot visualization after normalization
+boxplot( genes_data, horizontal=T , las=1 , cex.axis=0.5 )
+
+
+# Adjust the layout and margins as needed
+par(mfrow = c(8, 9), mar = c(1, 1, 2.5, 1))
+
+for (col in colnames(genes_data)) {
+  plot(density(genes_data[[col]]), 
+       main = col,
+       xlab = col, col = "#009AEF", lwd = 2)
+}
+
+# Write normalized data to file for future use in part 2
+# Setting the Condition Strings in the first column
+group = factor(c(
+  "Gene",
+  paste0("A_Wt.", 1:10),
+  paste0("B_Tg.", 1:13),
+  paste0("C_Proph_Ther_Rem.", 1:3),
+  paste0("D_Ther_Rem.", 1:10),
+  paste0("E_Ther_Hum.", 1:10),
+  paste0("F_Ther_Enb.", 1:10),
+  paste0("G_Ther_Cim.", 1:10)
+))
+
+
+write.table(data.frame(rownames(genes_data), genes_data),
+            file = "Supplement/Raw_common18704genes_antiTNF_normalized.tsv",
+            sep = "\t",
+            quote = F,
+            row.names = F,
+            col.names = group)
+```
+
+### Principal Components Analysis (PCA) & Uniform Manifold Approximation and Projection (UMAP)
+
+In this section, the PCA and UMAP techniques are used to increase the interpretability and reduce the dimensionality of the data, keeping only the components that contain enough information.
+
+UMAP is a dimensionality reduction technique commonly used for visualizing high-dimensional data in a lower-dimensional space. This algorithm is particularly valuable for visualizing complex datasets such as genomics, single-cell RNA sequencing, and other high-dimensional biological applications. Its flexibility, speed, and ability to retain meaningful structures make UMAP a powerful tool for exploratory data analysis and gaining insights into the inherent structures of diverse datasets.
+
+Firstly, we preprocess the data to keep only WT and TG conditions for simplicity and we plot the first two UMAP components. This UMAP plot captures the essential structure of the data in a lower-dimensional space, effectively highlighting the distinct patterns and relationships between wild-type (WT) and transgenic (TG) conditions.
+
+```{r}
+# We prepare dataframe for UMAP dimension reduction
+# We check if samples are separated in 2 dimensions
+
+# Keep only WT and TG samples
+wt_tg_df = genes_data[, 1:23]
+
+# After dataframe transposition columns must represent genes
+wt_tg_df = t(wt_tg_df)
+```
+
+```{r umap}
+# UMAP dimension reduction for wt and tg samples
+wt_tg_df.umap <- umap(wt_tg_df, n_components=2, random_state=15)
+
+# Keep the numeric dimensions
+wt_tg_df.umap <- wt_tg_df.umap[["layout"]]
+
+# Create vector with groups
+group = c(rep("A_Wt", 10), rep("B_Tg", 13))
+
+# Create final dataframe with dimensions and group for plotting
+wt_tg_df.umap <- cbind(wt_tg_df.umap, group)
+wt_tg_df.umap <- data.frame(wt_tg_df.umap)
+
+# Plot UMAP results
+ggplotly(
+  ggplot(wt_tg_df.umap, aes(x = V1, y = V2, color = group)) +
+    geom_point() +
+    labs(
+      x = "UMAP1",
+      y = "UMAP2",
+      title = "UMAP plot",
+      subtitle = "A UMAP Visualization of WT and TG samples") +
+    theme(
+      axis.text.x = element_blank(),
+      axis.text.y = element_blank(),
+      axis.ticks = element_blank()
+    )
+)
+```
+
+Principal Component Analysis (PCA) is a widely used dimensionality reduction technique that transforms high-dimensional data into a new coordinate system, revealing its underlying structure. In PCA, the first principal component captures the maximum variance in the data, with subsequent components capturing decreasing amounts of variance. This reduction not only simplifies the dataset but also allows for the identification of the most significant features driving variability.
+
+The table below shows the standard deviation and variance of each PCA component. It turns out that only the first 3 components represent more than 84% of the variability of the data, which facilitates the selection of the main features from the total components. The next step is to graphically represent the contribution of each component to the overall information.
+
+```{r pca}
+# PCA dimension reduction
+wt_tg_df.pca <- prcomp(wt_tg_df, scale. = FALSE)
+
+summary(wt_tg_df.pca)
+```
+
+```{r}
+plot_grid(fviz_pca_ind(wt_tg_df.pca, repel = TRUE, # Avoid text overlapping
+                  habillage = group,
+                  label = "none",
+                  axes = c(1, 2), # choose PCs to plot
+                  addEllipses = TRUE,
+                  ellipse.level = 0.95,
+                  title = "Biplot: PC1 vs PC2") +
+                  scale_color_manual(values = c('#33cc00','#009AEF95')) +
+                  scale_fill_manual(values = c('#33cc00','#009AEF95')),
+          fviz_pca_ind(wt_tg_df.pca, repel = TRUE, # Avoid text overlapping
+                  habillage = group,
+                  label = "none",
+                  axes = c(1, 3), # choose PCs to plot
+                  addEllipses = TRUE,
+                  ellipse.level = 0.95,
+                  title = "Biplot: PC1 vs PC3") + 
+                  scale_color_manual(values = c('#33cc00','#009AEF95')) +
+                  scale_fill_manual(values = c('#33cc00','#009AEF95')),
+          fviz_pca_ind(wt_tg_df.pca, repel = TRUE, # Avoid text overlapping
+                  habillage = group,
+                  label = "none",
+                  axes = c(2, 3), # choose PCs to plot
+                  addEllipses = TRUE,
+                  ellipse.level = 0.95,
+                  title = "Biplot: PC2 vs PC3") +
+                  scale_color_manual(values = c('#33cc00','#009AEF95')) +
+                  scale_fill_manual(values = c('#33cc00','#009AEF95')),
+          
+          # Visualize eigenvalues/variances
+          fviz_screeplot(wt_tg_df.pca, 
+                    addlabels = TRUE,
+                    title = "Principal Components Contribution",
+                    ylim = c(0, 65), 
+                    barcolor = "#009AEF95",  
+                    barfill = "#009AEF95"),
+          
+          # Contributions of features to PC1
+          fviz_contrib(wt_tg_df.pca, 
+                  choice = "var", 
+                  axes = 1, 
+                  top = 14, 
+                  color = "#009AEF95", 
+                  fill = "#009AEF95"),
+          
+          # Contributions of features to PC2
+          fviz_contrib(wt_tg_df.pca, 
+                  choice = "var", 
+                  axes = 2, 
+                  top = 14, 
+                  color = "#009AEF95", 
+                  fill = "#009AEF95"),
+          labels = c("A", "B", "C", "D", "E", "F")
+)
+```
+
+```{r}
+wt_tg_df.pca <- data.frame("PC1" = wt_tg_df.pca$x[,1], 
+                           "PC2" = wt_tg_df.pca$x[,2], 
+                           "group" = group)
+
+# Plot PCA results
+
+# insert dataframe [1] , variables [2]-[3] and color groyp [4]
+ggplot( wt_tg_df.pca, aes(x= PC1 , y= PC2 , color= group ))+
+  
+  # try "geom_point" or "geom_line"
+  geom_point()+
+  
+  # try "ggtitle" or "ggname"
+  ggtitle("Two First Components of PCA") +
+  theme(axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks = element_blank())
+
+ggplotly()
+```
+
+### Statistical Analysis
+
+#### Group Treatments in dataframe
+
+The following code performs an Analysis of Variance (ANOVA) on the gene expression levels of the first gene in the dataset (`matrixdata`) across different experimental groups (`group`). It then summarizes the results and calculates the mean expression value for each group.
+
+```{r}
+# Create Matrix by Excluding rownames and colnames
+matrixdata = as.matrix(genes_data)
+
+# Create Groups
+group = factor(c(
+  rep("A_Wt", 10),
+  rep("B_Tg", 13),
+  rep("C_Proph_Ther_Rem", 3),
+  rep("D_Ther_Rem", 10),
+  rep("E_Ther_Hum", 10),
+  rep("F_Ther_Enb", 10),
+  rep("G_Ther_Cim", 10)
+))
+
+
+# apply ANOVA on the first gene
+
+# create dataframe for gene1
+# try "data.frame" or "as.data.frame" [1] and insert first matrix row [2]
+gene1 = data.frame("gene_expression" = matrixdata[ 1 , ], "group" = group)
+
+# ANOVA function on the first gene
+# try "aov" or "anova" [1] , insert gene1 data [2] and groups [3]
+gene_aov = aov( gene_expression ~ group , data = gene1)
+
+
+# summary anova results
+summary(gene_aov)
+
+# Calculate Mean Expression value / group
+group_mean_values <- aggregate(gene1$gene_expression, 
+                               list(gene1$group), 
+                               FUN=mean)
+group_mean_values
+```
+
+#### ANOVA
+
+The Analysis of Variance (ANOVA) test is a statistical method frequently employed in gene expression studies to assess the significance of expression differences across multiple experimental conditions. ANOVA determines whether there are statistically significant variations in the means of gene expression levels between different groups or conditions. In the context of gene expression data, ANOVA is particularly useful when comparing more than two groups, providing insights into whether any observed differences are likely due to actual biological effects (for example, the administration of a drug) rather than random variability. The test generates an F-statistic and a p-value, where a low p-value suggests that at least one group significantly differs from the others. Post-hoc tests, such as Tukey's HSD (honestly significant difference), can be applied following ANOVA to identify specific groups with significantly different expression levels, offering a comprehensive approach to understanding the nuances of gene expression patterns across diverse experimental conditions.
+
+In general:
+
+-   **ANOVA (Analysis of Variance):**
+
+    -   **Advantages:** ANOVA is useful when you have more than two groups, allowing you to assess whether there are any significant differences in gene expression across multiple conditions simultaneously.
+
+    -   **Considerations:** ANOVA only informs you that there are differences between groups but does not identify which specific groups are different. If ANOVA indicates significance, post-hoc tests like Tukey's HSD can be subsequently applied to pinpoint pairwise differences.
+
+-   **Tukey's HSD (Honest Significant Difference) Test:**
+
+    -   **Advantages:** Tukey's HSD post-hoc test is a valuable follow-up of ANOVA. It is advantageous for identifying specific pairs of conditions that exhibit significant differences in gene expression, providing a detailed understanding of the groups that contribute to the observed variability.
+
+    -   **Considerations:** Tukey's HSD makes assumptions of normality and homogeneity of variances.
+
+For the purposes of the present analysis, we will focus only on the analysis of variance and Tukey's HSD post hoc test, for simplicity and speed of calculations reasons.
+
+```{r}
+# Tukey's HSD post-hoc on the first (1st) gene
+tukey <- TukeyHSD(gene_aov, conf.level = 0.95)
+
+
+# ------- Metrics -------
+# diff: The estimated difference in means between two different conditions.
+# lwr: The lower limit of the confidence interval for the difference.
+# upr: The upper limit of the confidence interval for the difference.
+# p adj: The adjusted p-value for the test.
+tukey
+
+# Access all metrics from Tukey's post-hoc test for TG and WT conditions
+tukey$group["B_Tg-A_Wt",  ]
+
+# Access the estimated difference in means between two different conditions
+tukey$group["B_Tg-A_Wt", 1]
+
+# Access the adjusted p-value for the test
+tukey$group["B_Tg-A_Wt", 4]
+
+tukey_data <- c(tukey$group["B_Tg-A_Wt", 1], tukey$group["B_Tg-A_Wt", 4], 
+                tukey$group["C_Proph_Ther_Rem-A_Wt", 1], tukey$group["C_Proph_Ther_Rem-A_Wt", 4],
+                tukey$group["D_Ther_Rem-A_Wt", 1], tukey$group["D_Ther_Rem-A_Wt", 4], 
+                tukey$group["E_Ther_Hum-A_Wt", 1], tukey$group["E_Ther_Hum-A_Wt", 4], 
+                tukey$group["F_Ther_Enb-A_Wt", 1], tukey$group["F_Ther_Enb-A_Wt", 4],
+                tukey$group["G_Ther_Cim-A_Wt", 1], tukey$group["G_Ther_Cim-A_Wt", 4])
+tukey_data
+```
+
+In summary, the Tukey's HSD test results indicate that there is no statistically significant difference in the mean gene expression levels between the TG and WT conditions. The estimated difference is -0.03668, and the confidence interval (-0.40742 to 0.33406) [includes zero]{.underline}. The adjusted p-value of 0.99993 is higher than the commonly used significance level (e.g., 0.05), suggesting that we do not have sufficient evidence to reject the null hypothesis of no difference between these two conditions.
+
+[Note:]{.underline} If zero is included in the confidence interval, it implies that the estimated effect or difference is not statistically significant at the chosen level of confidence. In other words, there is a level of uncertainty, and the data do not provide enough evidence to reject the null hypothesis of no effect or difference.
+
+Below, we conducting **Dunnett's** post-hoc test on the results of the ANOVA model for gene expression data. Dunnett's test is a post-hoc test that compares each treatment group to a single control group, helping identify which treatment groups differ significantly from the control. In this context:
+
+-   **Hypotheses:**
+
+    -   Null Hypothesis: The mean of the control group is equal to the means of all other groups.
+
+    -   Alternative Hypothesis: The mean of the control group is **not** equal to the means of one or more other groups.
+
+-   **Output:**
+
+    -   The coefficients represent the estimated differences between the means of each treatment group and the control group.
+
+    -   The p-values indicate the statistical significance of each comparison.
+
+The provided code allows you to examine the estimated differences and associated p-values for each group compared to the control in the context of Dunnett's post-hoc test.
+
+```{r dunnett}
+# Dunnett's post-hoc on the first (1st) gene
+dunnett <- glht(gene_aov, linfct = mcp(group = "Dunnett"))
+
+modgene <- summary(dunnett)
+modgene
+
+modgene[[10]]$coefficients
+modgene[[10]]$pvalues
+```
+
+In the final step of statistical analysis, we perform analysis of variance and Tukey's post hoc tests on all genes and we store them in a new dataframe. This analysis is similar to above, but repeated for the total number of genes.
+
+```{r anova_all_genes}
+
+# Apply ANOVA on all genes
+
+# create empty dataframe
+anova_table = data.frame()
+
+# recursive parse all genes
+# try "length" or "len" [1] and insert matrix first column [2]
+for( i in 1:length( matrixdata[ , 1 ] ) ) {
+  
+  # create dataframe for each gene
+  # insert gene row data
+  df = data.frame("gene_expression" = matrixdata[ i , ], 
+                  "group" = group)
+  
+  # apply ANOVA for gene i
+  # insert anova function [1] and gene i data [2] and groups [3]
+  gene_aov = aov( gene_expression ~ group , data = df)
+  
+  # apply tukey's post-hoc test on ANOVA results
+  # try "Tukey" or "TukeyHSD" [1] and insert anova output [2]
+  tukey = TukeyHSD( gene_aov , conf.level = 0.99)
+  
+  # vector calling Tukey's values
+  tukey_data = c(tukey$group["B_Tg-A_Wt", 1],
+                 tukey$group["B_Tg-A_Wt", 4],
+                 tukey$group["C_Proph_Ther_Rem-A_Wt", 1],
+                 tukey$group["C_Proph_Ther_Rem-A_Wt", 4],
+                 tukey$group["D_Ther_Rem-A_Wt", 1],
+                 tukey$group["D_Ther_Rem-A_Wt", 4],
+                 tukey$group["E_Ther_Hum-A_Wt", 1],
+                 tukey$group["E_Ther_Hum-A_Wt", 4],
+                 tukey$group["F_Ther_Enb-A_Wt", 1],
+                 tukey$group["F_Ther_Enb-A_Wt", 4],
+                 tukey$group["G_Ther_Cim-A_Wt", 1],
+                 tukey$group["G_Ther_Cim-A_Wt", 4],
+                 
+                 tukey$group["C_Proph_Ther_Rem-B_Tg", 1],
+                 tukey$group["C_Proph_Ther_Rem-B_Tg", 4],
+                 tukey$group["D_Ther_Rem-B_Tg", 1],
+                 tukey$group["D_Ther_Rem-B_Tg", 4],
+                 tukey$group["E_Ther_Hum-B_Tg", 1],
+                 tukey$group["E_Ther_Hum-B_Tg", 4],
+                 tukey$group["F_Ther_Enb-B_Tg", 1],
+                 tukey$group["F_Ther_Enb-B_Tg", 4],
+                 tukey$group["G_Ther_Cim-B_Tg", 1],
+                 tukey$group["G_Ther_Cim-B_Tg", 4])
+  
+  # append Tukey's data to dataframe
+  # try "rbind" or "cbind"
+  anova_table = rbind( anova_table , tukey_data)
+}
+
+colnames(anova_table) <- c("Wt_Tg_diff", "Wt_Tg_padj",
+                           "Wt_Rem_P_diff", "Wt_Rem_P_padj", 
+                           "Wt_Rem_diff", "Wt_Rem_padj", 
+                           "Wt_Hum_diff", "Wt_Hum_padj", 
+                           "Wt_Enb_diff", "Wt_Enb_padj", 
+                           "Wt_Cim_diff", "Wt_Cim_padj",
+                           
+                           "Tg_Rem_P_diff", "Tg_Rem_P_padj", 
+                           "Tg_Rem_diff", "Tg_Rem_padj", 
+                           "Tg_Hum_diff", "Tg_Hum_padj", 
+                           "Tg_Enb_diff", "Tg_Enb_padj", 
+                           "Tg_Cim_diff", "Tg_Cim_padj")
+
+# Add rownames with gene names
+rownames(anova_table) = Gene
+```
+
+### Volcano Plot
+
+Volcano plots are graphical representations commonly used to visualize the results of statistical tests, particularly in the context of differential expression analysis. In a volcano plot, each data point represents a gene, with the x-axis indicating the effect size (log-fold change or difference between two conditions) and the y-axis representing the statistical significance (p-value) of the difference between experimental conditions. Genes that exhibit substantial changes and high statistical significance appear as points located towards the extremes of the plot, resembling the shape of a volcano. This visualization helps to identify and prioritize genes that are most relevant to the conditions being compared, making it a powerful tool for exploring and interpreting high-throughput data.
+
+```{r volcano}
+
+# Volcano plot preparation
+
+# set variable to "0"
+upWT = 0
+downWT = 0
+nochangeWT = 0
+
+# Filter Differential Expressed Genes
+# insert dataframe column id [1] , try "&" or "|" [2] 
+# and insert dataframe column id [3]
+upWT = which(anova_table[ , 1 ] < -1.0 & anova_table[ , 2 ] < 0.05)
+
+# insert dataframe column id [1] , try "&" or "|" [2] 
+# and insert dataframe column id [3]
+downWT = which(anova_table[ , 1 ] > 1.0 & anova_table[ , 2 ] < 0.05)
+
+# try ">" or "<" [1] , try "&" or "|" [2] and try "&" or "|" [3]
+nochangeWT = which(anova_table[ , 2 ] > 0.05 | 
+                  # try "<" or ">" [1] , try "&" or "|" [2] , try "<" or ">" [3]
+                  (anova_table[ , 1 ] > -1.0 & anova_table[ , 1 ] < 1.0 ) )
+
+
+# Create vector to store states for each gene
+state <- vector(mode="character", length=length(anova_table[,1]))
+state[upWT]   <- "up_WT"
+state[downWT] <- "down_WT"
+state[nochangeWT] <- "nochange_WT"
+
+# Identify names of genes differentially expressed between wt and tg
+genes_up_WT   <- c(rownames(anova_table)[upWT])
+genes_down_WT <- c(rownames(anova_table)[downWT])
+
+# Union of DEGs between wt and tg
+deg_wt_tg <- c(genes_up_WT, genes_down_WT)
+
+# Subset dataframe based on specific degs
+deg_wt_tg_df <- subset( genes_data , Gene %in% deg_wt_tg)
+
+## Dataframe for volcano plot
+volcano_data <- data.frame("padj" = anova_table[,2], 
+                           "DisWt" = anova_table[,1], 
+                           state=state)
+
+# Volcano plot
+
+# insert data [1] , insert variables [2]-[3] and insert color group [4]
+ggplot( volcano_data , aes(x = DisWt , y = -log10(padj) , colour = state )) +
+    
+    geom_point() +
+    
+    labs(x = "mean(Difference)",
+         y = "-log10(p-value)",
+         title = "Volcano Plot",
+         subtitle = "Differentially Expressed Genes (WT vs TG)") +
+    
+    # insert line to show cutoff
+    # try "-2" or "-1" [1] and try "2" or "1" [2]
+    geom_vline(xintercept = c( -1 , 1 ),
+               linetype = "dashed",
+               color = "black") +
+    
+    # insert line to show cutoff
+    geom_hline(yintercept = -log10(0.05),
+               linetype = "dashed",
+               color = "black")
+
+ggplotly()
+
+```
+
+### Principal Components Analysis (PCA) & Uniform Manifold Approximation and Projection (UMAP) after identifying Differential Expressed Genes
+
+First subset the original genes data based on the Differential Expressed Genes
+
+```{r}
+
+# Subset dataframe based on specific degs
+deg_wt_tg_df = subset( genes_data , Gene %in% deg_wt_tg)
+
+deg_wt_tg_df = deg_wt_tg_df[,1:23]
+
+# After dataframe transposition columns must represent genes
+deg_wt_tg_df = t(deg_wt_tg_df)
+
+```
+
+```{r umap_deg}
+
+# UMAP dimension reduction for wt and tg samples
+deg_wt_tg_df.umap = umap(deg_wt_tg_df, n_components=2, random_state=15)
+
+# Keep the numeric dimensions
+deg_wt_tg_df.umap = deg_wt_tg_df.umap[["layout"]]
+
+# Create vector with groups
+group = c(rep("A_Wt", 10), rep("B_Tg", 13) )
+
+# Create final dataframe with dimensions and group for plotting
+deg_wt_tg_df.umap = cbind(deg_wt_tg_df.umap, group)
+deg_wt_tg_df.umap = data.frame(deg_wt_tg_df.umap)
+
+# Plot UMAP results
+ggplotly(
+  ggplot(deg_wt_tg_df.umap, aes(x = V1, y = V2, color = group)) +
+    geom_point() +
+    labs(x = "UMAP1", y = "UMAP2", 
+         title = "UMAP plot", 
+         subtitle = "A UMAP Visualization of WT and TG samples (DEGs subset)") +
+    theme(axis.text.x = element_blank(),
+          axis.text.y = element_blank(),
+          axis.ticks = element_blank())
+  )
+```
+
+```{r pca_deg}
+
+# group wt and tg as character and not factor
+group = c(rep("A_Wt", 10), rep("B_Tg", 13) )
+
+# dimension reduction with PCA for wt and tg dataframe
+deg_wt_tg_df.pca = prcomp(deg_wt_tg_df , scale. = FALSE)
+
+deg_wt_tg_df.pca = data.frame("PC1" = deg_wt_tg_df.pca$x[,1] , 
+                              "PC2" = deg_wt_tg_df.pca$x[,2] , 
+                              "group" = group)
+
+# plot PCA results
+ggplotly(
+  ggplot(deg_wt_tg_df.pca , aes(x=PC1,y=PC2,color=group))+
+    geom_point()+
+    labs(x = "PC1", y = "PC2", 
+         title = "PCA plot", 
+         subtitle = "A PCA Visualization of WT and TG samples (DEGs subset)") +
+    theme(axis.text.x = element_blank(),
+          axis.text.y = element_blank(),
+          axis.ticks = element_blank())
+)
+```
+
+We now identify Differential Expressed Genes between transgenic animals and at least one therapy
+
+```{r deg_tg_ther}
+# Volcano plot dataframe preparation for DEGs from TG vs therapies
+upTHER = 0
+downTHER = 0
+nochangeTHER = 0
+
+# Filter genes based on mean diff and p_value between TG and therapies
+upTHER = which((anova_table[,13] < -1.0 & anova_table[,14] < 0.05) | 
+               (anova_table[,15] < -1.0 & anova_table[,16] < 0.05) | 
+               (anova_table[,17] < -1.0 & anova_table[,18] < 0.05) |
+               (anova_table[,19] < -1.0 & anova_table[,20] < 0.05) |
+               (anova_table[,21] < -1.0 & anova_table[,22] < 0.05) )
+
+downTHER = which((anova_table[,13] > 1.0 & anova_table[,14] < 0.05) | 
+                 (anova_table[,15] > 1.0 & anova_table[,16] < 0.05) | 
+                 (anova_table[,17] > 1.0 & anova_table[,18] < 0.05) |
+                 (anova_table[,19] > 1.0 & anova_table[,20] < 0.05) |
+                 (anova_table[,21] > 1.0 & anova_table[,22] < 0.05) )
+
+nochangeTHER = which( ( (anova_table[,13] > -1.0 & anova_table[,13] < 1.0) |   
+                         anova_table[,14] > 0.05) |
+                  
+                      ( (anova_table[,15] > -1.0 & anova_table[,15] < 1.0) |
+                         anova_table[,16] > 0.05) |
+                        
+                      ( (anova_table[,17] > -1.0 & anova_table[,17] < 1.0) |
+                         anova_table[,18] > 0.05) |
+                        
+                      ( (anova_table[,19] > -1.0 & anova_table[,19] < 1.0) |
+                         anova_table[,20] > 0.05) |
+                        
+                      ( (anova_table[,21] > -1.0 & anova_table[,21] < 1.0) |
+                         anova_table[,22] > 0.05) )
+
+# Create vector to store states for each gene
+state = vector(mode = "character", length = length(anova_table[,1]))
+state[upTHER] = "up_THER"
+state[downTHER] = "down_THER"
+state[nochangeTHER] = "nochange_THER"
+
+# Identify names of genes differentially expressed between tg and therapies
+genes_up_THER = c(rownames(anova_table)[upTHER])
+genes_down_THER = c(rownames(anova_table)[downTHER])
+
+deg_tg_ther = c(genes_up_THER, genes_down_THER)
+
+# Combine DEGs from TG and ther
+DEGs = c(deg_tg_ther, deg_wt_tg)
+
+# Data frame with all DEGs for clustering
+DEGsFrame = anova_table[rownames(anova_table) %in% DEGs, ]
+DEGsFrame = as.matrix(DEGsFrame)
+```
+
+### Hierarchical Clustering
+
+The code performs k-means clustering on a gene expression dataset (DEGsFrame) to partition genes into six distinct clusters based on their expression profiles. After clustering, it extracts genes belonging to each cluster and presents them in a tabular format. This analysis provides insights into the underlying patterns and relationships within the gene expression data, facilitating the identification of co-expressed genes and potential regulatory networks.
+
+```{r clustering}
+# k-means clustering
+# ------------------
+kmeans = kmeans(DEGsFrame[, c(1,3,5,7,9,11) ], centers = 6)
+ggplotly(fviz_cluster(kmeans, data = (DEGsFrame[, c(1,3,5,7,9,11)]), geom = "point", show.clust.cent = TRUE))
+
+# Extract genes from clusters
+clusters = data.frame(kmeans$cluster)
+colnames(clusters) = ("ClusterNo")
+
+# Extract specific cluster
+cluster1 = rownames(subset(clusters, ClusterNo==1))
+
+# Output data as table (group by cluster number)
+kable(clusters, col.names="Cluster Number",
+      caption ="Clusters and associated genes.") |>
+  kable_styling(font_size = 16)  |>
+  scroll_box(height = "400px")
+
+# Extract other cluster
+cluster2 = rownames(subset(clusters, ClusterNo==2))
+cluster3 = rownames(subset(clusters, ClusterNo==3))
+cluster4 = rownames(subset(clusters, ClusterNo==4))
+cluster5 = rownames(subset(clusters, ClusterNo==5))
+cluster6 = rownames(subset(clusters, ClusterNo==6))
+```
+
+### Functional analysis of Differentially Expressed Genes (DEGs)
+
+Functional analysis of Differentially Expressed Genes (DEGs) is a critical component in understanding the molecular mechanisms underlying various biological processes, such as disease progression, developmental pathways, or responses to external stimuli. DEGs are genes that exhibit significant changes in expression levels between different experimental conditions, such as diseased versus healthy tissues or treated versus untreated samples.
+
+Once DEGs are identified, they need to be annotated to determine their biological functions, cellular localization, molecular interactions, and involvement in various biological pathways. This is often achieved by comparing DEGs to databases of known gene annotations, such as Gene Ontology (GO) or Kyoto Encyclopedia of Genes and Genomes (KEGG).
+
+Pathway analysis focuses on identifying interconnected networks of genes that collaborate to carry out specific biological functions or participate in common signaling pathways. This involves mapping DEGs onto existing biological pathways and identifying key regulatory nodes or hub genes within these pathways. Pathway analysis provides insights into the underlying molecular mechanisms driving the observed gene expression changes.
+
+The code below performs hierarchical clustering analysis on a gene expression dataset and then further analyzes the clusters to identify enriched biological terms using the databases: Gene Ontology (GO), with three Sub-Ontologies (Biological Process (BP), Cellular Component (CC), Molecular Function (MF)) transcription factors (TF), and Kyoto Encyclopedia of Genes and Genomes (KEGG) databases.
+
+```{r functional_analysis}
+# Function to perform hierarchical clustering using the "ward.D2" method
+hclustfunc = function(x)
+  hclust(x, method="ward.D2")
+
+# Function to calculate pairwise Euclidean distances between data points
+distfunc = function(x)
+  dist(x, method="euclidean")
+
+# Perform clustering on rows and columns
+cl.row = hclustfunc(distfunc(DEGsFrame[, c(1,3,5,7,9,11)]))
+
+# Extract cluster assignments of rows
+gr.row = cutree(cl.row, k=6)
+
+# Apply a set of color palette
+colors = brewer.pal(5, "Set3")
+
+heatmap <- heatmap.2(
+          DEGsFrame[, c(1,3,5,7,9,11)],
+          col = bluered(100), # blue-red color palette
+          tracecol="black",
+          density.info = "none",
+          labCol = c("TG", "REM_P", "REM", "HUM", "ENB","CIM"),
+          scale="none", 
+          labRow="", 
+          vline = 0,
+          mar=c(6,2),
+          RowSideColors = colors[gr.row],
+          hclustfun = function(x) hclust(x, method = 'ward.D2')
+)
+
+mt <- as.hclust(heatmap$rowDendrogram)
+tgcluster <- cutree(mt, k = 8)
+tgdegnames <- rownames(DEGsFrame)
+cl <- as.numeric(names(table(tgcluster)))
+
+totalresults <- 0
+totalcols <- 0
+pcols<-c("firebrick4", "red", "dark orange", "gold","dark green", "dodgerblue", "blue", "magenta", "darkorchid4")
+
+for (i in c(6, 5, 4, 3, 2, 7, 1)) {
+  gobp <- gost(query = as.character(tgdegnames[which(tgcluster == cl[i])]), organism = "mmusculus", significant = T, sources = "GO:BP")$result
+  gomf <- gost(query = as.character(tgdegnames[which(tgcluster == cl[i])]), organism = "mmusculus", significant = T, sources = "GO:MF")$result
+  gocc <- gost(query = as.character(tgdegnames[which(tgcluster == cl[i])]), organism = "mmusculus", significant = T, sources = "GO:CC")$result
+  tf   <- gost(query = as.character(tgdegnames[which(tgcluster == cl[i])]), organism = "mmusculus", significant = T, sources = "TF")$result
+  kegg <- gost(query = as.character(tgdegnames[which(tgcluster == cl[i])]), organism = "mmusculus", significant = T, sources = "KEGG")$result
+  
+  results <- rbind(kegg, tf, gobp, gomf, gocc)
+  
+  tf  <- grep("TF:", results$term_id)
+  go  <- grep("GO:", results$term_id)
+  kegg<-grep("KEGG:", results$term_id)
+  
+  kegg<- results[kegg, ]
+  tf  <- results[tf, ]
+  go  <- results[go, ]
+  
+  kegg<- kegg[order(kegg$p_value), ]
+  go  <- go[order(go$p_value), ]
+  tf  <- tf[order(tf$p_value), ]
+  
+  ll <- strsplit(as.character(tf$term_name), ": ")
+  ll <- sapply(ll, "[[", 2)
+  ll <- strsplit(as.character(ll), ";")
+  tf$term_name <- sapply(ll, "[[", 1)
+  
+  # Remove duplicates
+  if (length(tf$term_id) > 0) {
+    uniqtf <- unique(tf$term_name)
+    tfout <- 0
+    for (ik in 1:length(uniqtf)) {
+      nn <- which(as.character(tf$term_name) == as.character(uniqtf[ik]))
+      tfn <- tf[nn, ]
+      inn <- which(tfn$p_value == min(tfn$p_value))
+      tfout <- rbind(tfout, head(tfn[inn, ], 1))
+    }
+    tf <- tfout[2:length(tfout[, 1]), ]
+  }
+  results <- rbind(head(kegg, 10), head(go, 10), head(tf, 10))
+  totalresults <- rbind(totalresults, results)
+  n <- length(results$term_id)
+  totalcols <- c(totalcols, rep(pcols[i], n))
+}
+
+totalresults <- totalresults[2:length(totalresults[, 1]), ]
+totalcols <- totalcols[2:length(totalcols)]
+par(mar = c(5, 15, 1, 2))
+
+# Visualization of Enriched Terms
+barplot(
+  rev(-log10(totalresults$p_value[75:126])),
+  xlab = "-log10(p-value)",
+  ylab = "",
+  cex.main = 1.3,
+  cex.lab = 0.9,
+  cex.axis = 0.9,
+  main = "Under-Expressed Clusters",
+  col = rev(totalcols[75:126]),
+  horiz = T,
+  names = rev(totalresults$term_name[75:126]),
+  las = 1,
+  cex.names = 0.6
+)
+
+par(mar = c(5, 15, 1, 2))
+barplot(
+  rev(-log10(totalresults$p_value[1:74])),
+  xlab = "-log10(p-value)",
+  ylab = "",
+  cex.main = 1.3,
+  cex.lab = 0.9,
+  cex.axis = 0.9,
+  main = "Over-Expressed Clusters",
+  col = rev(totalcols[1:74]),
+  horiz = T,
+  names = rev(totalresults$term_name[1:74]),
+  las = 1,
+  cex.names = 0.6
+)
+```
+
+In addition, we perform functional enrichment analysis using the same function from the `gprofiler2` package to identify enriched biological terms associated with the genes in each cluster. The `gost` function compares the input gene list to a reference gene set and identifies statistically significant over-represented biological terms, such as Gene Ontology (GO) terms and Kyoto Encyclopedia of Genes and Genomes (KEGG) pathways. The results of the functional enrichment analysis are then filtered to include only statistically significant terms (p-value \<= 0.01) and terms with a maximum size of 200 genes. The final enriched genes are then stored in a single dataframe for further analysis.
+
+```{r functional_enrichment}
+funcenr1 <- gost(query=as.character(cluster1), organism="mmusculus")
+funcenr2 <- gost(query=as.character(cluster2), organism="mmusculus")
+funcenr3 <- gost(query=as.character(cluster3), organism="mmusculus")
+funcenr4 <- gost(query=as.character(cluster4), organism="mmusculus")
+funcenr5 <- gost(query=as.character(cluster5), organism="mmusculus")
+funcenr6 <- gost(query=as.character(cluster6), organism="mmusculus")
+
+
+# Extract statistical significant genes, based on Functional Enrichment
+filtered1 <- subset(funcenr1$result[c("term_name","p_value")], funcenr1$result$term_size<=200 & funcenr1$result$p_value<=0.01)
+filtered1 <- filtered1[order(filtered1$p_value),]
+
+filtered2 <- subset(funcenr2$result[c("term_name","p_value")], funcenr2$result$term_size<=200 & funcenr2$result$p_value<=0.01)
+filtered2 <- filtered2[order(filtered2$p_value),]
+
+filtered3 <- subset(funcenr3$result[c("term_name","p_value")], funcenr3$result$term_size<=200 & funcenr3$result$p_value<=0.01)
+filtered3 <- filtered3[order(filtered3$p_value),]
+
+filtered4 <- subset(funcenr4$result[c("term_name","p_value")], funcenr4$result$term_size<=200 & funcenr4$result$p_value<=0.01)
+filtered4 <- filtered4[order(filtered4$p_value),]
+
+filtered5 <- subset(funcenr5$result[c("term_name","p_value")], funcenr5$result$term_size<=200 & funcenr5$result$p_value<=0.01)
+filtered5 <- filtered5[order(filtered5$p_value),]
+
+filtered6 <- subset(funcenr6$result[c("term_name","p_value")], funcenr6$result$term_size<=200 & funcenr6$result$p_value<=0.01)
+filtered6 <- filtered6[order(filtered6$p_value),]
+
+# Final Enriched genes
+finalEnrichedDEGs <- rbind(filtered1, filtered2, filtered3, filtered4, filtered5, filtered6)
+
+# Output data as table
+kable(finalEnrichedDEGs, col.names = c("Enriched Term", "p-value"), caption = "Enriched Biological Terms") |>
+  kable_styling(font_size = 16) |>
+  scroll_box(height = "400px")
+
+```
+
+## Results
+
+We have performed a comprehensive analysis of the gene expression data, including statistical analysis, differential expression analysis, hierarchical clustering, and functional enrichment analysis. The results of the analysis provide valuable insights into the underlying biological processes and molecular mechanisms associated with the observed gene expression changes. The identified differentially expressed genes (DEGs) and enriched biological terms can serve as a basis for further investigation and hypothesis generation, leading to a deeper understanding of the biological context and potential regulatory networks involved in the experimental conditions under study.
+
+In the next section, we will integrate machine learning algorithms to predict the response to different treatments based on the gene expression data. We will explore various classification models and evaluate their performance in predicting the treatment response, providing a practical application of the gene expression data in a predictive modeling context. The results of the machine learning analysis will complement the findings of the statistical and functional analyses, contributing to a comprehensive understanding of the biological and clinical implications of the gene expression data.
+
+## Part 2 - Integrating Machine Learning Algorithms
+
+```{python setup_python}
+import pandas as pd
+import numpy as np
+from collections import OrderedDict
+from sklearn.model_selection import train_test_split
+from sklearn.naive_bayes import GaussianNB
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.linear_model import LinearRegression, Ridge, Lasso, RidgeCV, LassoCV
+from sklearn.neural_network import MLPClassifier
+from sklearn.svm import SVC
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import classification_report
+from sklearn.metrics import f1_score
+from sklearn.metrics import accuracy_score
+from sklearn.metrics import confusion_matrix
+from random import shuffle
+from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
+from tqdm import tqdm
+import time
+from hyperopt import fmin, tpe, hp
+import tensorflow as tf
+from tensorflow.keras.models import Sequential
+import tensorflow as tf
+from tensorflow.keras.layers import Input, Dense
+from tensorflow.keras.models import Model
+```
+
+The initial data look like this:
+
+```{python load_data_python}
+tsv_file = 'Supplement/Raw_common18704genes_antiTNF_normalized.tsv'
+df = pd.read_csv(tsv_file, sep='\t')
+df.head(10)
+
+```
+
+The final dataset looks like this:
+
+```{python}
+genes = df['Gene'].values
+classes = df.columns.tolist()
+classes = classes[1:]
+for i in range(0, len(classes)):
+    if '.' in classes[i]:
+        parts = classes[i].split('.')
+        classes[i] = parts[0]
+final_df = pd.DataFrame(columns=genes)
+for i in range(1, len(classes)+1):
+    values = df.iloc[:, i].tolist()
+    new_data = {column: [value] for column, value in zip(genes, values)}
+    final_df = final_df._append(pd.DataFrame(new_data), ignore_index=True)
+final_df['label']=classes
+final_df['label'] = pd.factorize(final_df['label'])[0]
+rows = list(final_df.index)
+shuffle(rows)
+final_df = final_df.loc[rows].reset_index(drop=True)
+final_df.head(20)
+```
+
+Let's split the dataset into training and testing data:
+
+```{python}
+y=final_df['label']
+final_df.drop(['label'], axis=1, inplace=True)
+x=final_df
+x_train, x_val, y_train, y_val = train_test_split(x, y, test_size=0.3, random_state=10)
+```
+
+How do the training data look like?
+
+```{python}
+x_train.head(10)
+```
+
+We will train various classifiers:
+
+### 1. Gaussian Naive Bayes (GaussianNB)
+
+The Gaussian Naive Bayes classifier is based on applying Bayes' theorem with the "naive" assumption of independence between every pair of features. Given a class variable $y$ and a dependent feature vector $x_1$ through $x_n$, Bayes' theorem states the following relationship:
+
+$$
+P(y|x_1, \dots, x_n) = \frac{P(x_1, \dots, x_n|y) P(y)}{P(x_1, \dots, x_n)}
+$$
+
+However, calculating $P(x_1, \dots, x_n|y)$ directly is often infeasible, so Naive Bayes assumes that each feature $x_i$ is conditionally independent of every other feature. This simplifies the calculation to:
+
+$$
+P(x_i|y) \approx \frac{1}{\sqrt{2\pi\sigma_y^2}} e^{-\frac{(x_i - \mu_y)^2}{2\sigma_y^2}}
+$$
+
+where $\mu_y$ and $\sigma_y^2$ are the mean and variance of feature $x_i$ for class $y$. The parameters $\mu_y$ and $\sigma_y^2$ are estimated from the training data.
+
+### 2. Support Vector Machine (SVC)
+
+The Support Vector Machine (SVC for Support Vector Classification) aims to find the hyperplane in an N-dimensional space that distinctly classifies the data points. To separate two classes, the SVM finds the hyperplane with the maximum margin, which is the maximum distance between data points of both classes. Mathematically, if the training data set is given by $(x_i, y_i)$ where $x_i$ is the feature vector and $y_i \in \{-1, 1\}$ is the class label, the problem can be formulated as:
+
+$$
+\min_{w, b} \frac{1}{2}||w||^2
+$$
+
+subject to the constraint:
+
+$$
+y_i(w \cdot x_i + b) \geq 1, \forall i
+$$
+
+Here, $w$ is the normal vector to the hyperplane, and $b$ is the bias term. This formulation is often solved using Lagrange multipliers and kernel tricks for non-linearly separable data.
+
+### 3. Decision Tree Classifier
+
+A Decision Tree Classifier uses a decision tree to go from observations about an item to conclusions about the item's target value. It's a simple flowchart-like structure where each internal node represents a "test" on an attribute, each branch represents the outcome of the test, and each leaf node represents a class label. The paths from root to leaf represent classification rules.
+
+In a simplified mathematical description, the decision at each node is made based on maximizing some criterion, typically the Information Gain, defined as:
+
+$$
+\text{Information Gain} = \text{Entropy}(parent) - \sum_{j} \frac{N_j}{N} \text{Entropy}(child_j)
+$$
+
+where Entropy is a measure of the impurity or randomness in the dataset and is given by:
+
+$$
+\text{Entropy}(S) = - \sum_{i} p_i \log_2 p_i
+$$
+
+with $p_i$ being the proportion of the samples that belong to class $i$.
+
+### 4. Random Forest Classifier
+
+A Random Forest Classifier builds multiple decision trees and merges them together to get a more accurate and stable prediction. The fundamental idea behind a random forest is to combine the predictions of several trees to decide on the final classification. This is often more accurate than the prediction of any individual tree because the forest corrects for the overfitting of individual trees to their training set.
+
+Mathematically, the prediction of the random forest for classification tasks is the mode of the classes predicted by individual trees. If you have a random forest with $N$ trees and $C_i$ is the class predicted by the $i^{th}$ tree, the final prediction ($C_{\text{final}}$) can be expressed as:
+
+$$
+C_{\text{final}} = \text{mode} \{C_1, C_2, \ldots, C_N\}
+$$
+
+This model reduces overfitting by averaging multiple trees, each trained on random subsets of the training data (both samples and features), leading to higher robustness and accuracy.
+
+We will now train the models!
+
+```{python}
+nbc = GaussianNB()
+nbc.fit(x_train,y_train)
+
+svc = SVC()
+svc.fit(x_train, y_train)
+
+tree = DecisionTreeClassifier()
+tree.fit(x_train, y_train)
+
+rf = RandomForestClassifier()
+rf.fit(x_train, y_train)
+```
+
+Then, using the trained models, we make our predictions:
+
+```{python}
+y_pred_nbc = nbc.predict(x_val)
+y_pred_svc = svc.predict(x_val)
+y_pred_tree = tree.predict(x_val)
+y_pred_rf = rf.predict(x_val)
+```
+
+We will now evaluate these predictions so that we can decide which model is the best fit for our dataset.
+
+```{python}
+parameter='micro'
+s1=f1_score(y_val, y_pred_nbc, average=parameter)
+accuracy = accuracy_score(y_val, y_pred_nbc)
+print("\nGaussianNB f1 score:")
+print(s1)
+print("GaussianNB accuracy:")
+print(accuracy)
+s5=f1_score(y_val, y_pred_svc, average=parameter)
+accuracy = accuracy_score(y_val, y_pred_svc)
+print("\nSVC f1 score:")
+print(s5)
+print("SVC accuracy:")
+print(accuracy)
+s6=f1_score(y_val, y_pred_tree, average=parameter)
+accuracy = accuracy_score(y_val, y_pred_tree)
+print("\nDecision Tree f1 score:")
+print(s6)
+print("Tree accuracy:")
+print(accuracy)
+s7=f1_score(y_val, y_pred_rf, average=parameter)
+accuracy = accuracy_score(y_val, y_pred_rf)
+print("\nRandom Forest f1 score:")
+print(s7)
+print("Random Forest accuracy:")
+print(accuracy)
+cnf_matrix = confusion_matrix(y_val, y_pred_rf)
+```
+
+However, because of the small amount of data that we have, if we execute again hthe above cells, we may get slightly different results. As a result, we will run these experiments multiple time so that we get the average results:
+
+```{python}
+def average_trainer(trials):
+  min1=1
+  min5=1
+  min6=1
+  min7=1
+  max1=0
+  max5=0
+  max6=0
+  max7=0
+  avg1=0
+  avg5=0
+  avg6=0
+  avg7=0
+  for i in tqdm(range(trials), desc="Processing", unit="iteration"):
+    x_train, x_val, y_train, y_val = train_test_split(x, y, test_size=0.3, random_state=10)
+
+    nbc = GaussianNB()
+    nbc.fit(x_train,y_train)
+    svc = SVC()
+    svc.fit(x_train, y_train)
+    tree = DecisionTreeClassifier()
+    tree.fit(x_train, y_train)
+    rf = RandomForestClassifier()
+    rf.fit(x_train, y_train)
+
+    y_pred_nbc = nbc.predict(x_val)
+    y_pred_svc = svc.predict(x_val)
+    y_pred_tree = tree.predict(x_val)
+    y_pred_rf = rf.predict(x_val)
+
+    parameter='micro'
+    s1=f1_score(y_val, y_pred_nbc, average=parameter)
+    if(s1<min1):
+      min1=s1
+    if(s1>max1):
+      max1=s1
+    avg1=avg1+s1
+    s5=f1_score(y_val, y_pred_svc, average=parameter)
+    if(s5<min5):
+      min5=s5
+    if(s5>max5):
+      max5=s5
+    avg5=avg5+s5
+    s6=f1_score(y_val, y_pred_tree, average=parameter)
+    if(s6<min6):
+      min6=s6
+    if(s6>max6):
+      max6=s6
+    avg6=avg6+s6
+    s7=f1_score(y_val, y_pred_rf, average=parameter)
+    if(s7<min7):
+      min7=s7
+    if(s7>max7):
+      max7=s7
+    avg7=avg7+s7
+  avg1=avg1/trials
+  avg5=avg5/trials
+  avg6=avg6/trials
+  avg7=avg7/trials
+  print('\nNBC: max: '+str(max1)+ ' min: '+ str(min1) + ' average: '+ str(avg1))
+  print('SVC: max: '+str(max5)+ ' min: '+ str(min5) + ' average: '+ str(avg5))
+  print('TREE: max: '+str(max6)+ ' min: '+ str(min6) + ' average: '+ str(avg6))
+  print('RFOREST: max: '+str(max7)+ ' min: '+ str(min7) + ' average: '+ str(avg7))
+```
+
+```{python}
+average_trainer(50)
+```
+
+We will now check how different model parameters change our results, so that we select the best possible random forest classifier:
+
+```{python}
+def objective(params):
+
+    n_estimators = params['n_estimators']
+    max_depth = params['max_depth']
+    min_samples_split = params['min_samples_split']
+    min_samples_leaf = params['min_samples_leaf']
+
+    clf = RandomForestClassifier(
+        n_estimators=n_estimators,
+        max_depth=max_depth,
+        min_samples_split=min_samples_split,
+        min_samples_leaf=min_samples_leaf,
+        random_state=42
+    )
+    final_score=0
+    for i in range(0,20):
+      x_train, x_val, y_train, y_val = train_test_split(x, y, test_size=0.3, random_state=10)
+      clf.fit(x_train, y_train)
+      y_pred = clf.predict(x_val)
+      parameter='micro'
+      score=f1_score(y_val, y_pred, average=parameter)
+      final_score=final_score+score
+    final_score=final_score/20
+
+    return -final_score
+
+```
+
+```{python}
+space = {
+    'n_estimators': hp.choice('n_estimators', range(10, 101)),
+    'max_depth': hp.choice('max_depth', range(1, 21)),
+    'min_samples_split': hp.choice('min_samples_split', range(2, 11)),
+    'min_samples_leaf': hp.choice('min_samples_leaf', range(1, 11))
+}
+
+best = fmin(fn=objective, space=space, algo=tpe.suggest, max_evals=100)
+
+print("Best hyperparameters:", best)
+```
+
+### Principal Component Analysis (PCA)
+
+Principal Component Analysis (PCA) is a technique used to emphasize variation and bring out strong patterns in a dataset. It's often used to make data easy to explore and visualize. PCA can also be used for dimensionality reduction by identifying a smaller number of uncorrelated variables, known as principal components, from a large set of data.
+
+The goal of PCA is to identify the axes (principal components) that maximize the variance in the data. Here's how PCA works mathematically:
+
+1.  **Standardization**: The first step is to standardize the range of the continuous initial variables so that each one of them contributes equally to the analysis.
+
+2.  **Covariance Matrix Computation**: The next step is to compute the covariance matrix of the data. The covariance matrix expresses the correlation between the different variables in the dataset. For a dataset with $n$ variables, the covariance matrix is a $n \times n$ matrix given by:
+
+$$
+\Sigma = \begin{bmatrix}
+\sigma^2_1 & \sigma_{12} & \cdots & \sigma_{1n} \\
+\sigma_{21} & \sigma^2_2 & \cdots & \sigma_{2n} \\
+\vdots  & \vdots  & \ddots & \vdots  \\
+\sigma_{n1} & \sigma_{n2} & \cdots & \sigma^2_n
+\end{bmatrix}
+$$
+
+where $\sigma^2_i$ is the variance of the $i^{th}$ variable and $\sigma_{ij}$ is the covariance between the $i^{th}$ and $j^{th}$ variables.
+
+3.  **Eigenvalue Decomposition**: The covariance matrix is then decomposed into its eigenvectors and eigenvalues. The eigenvectors represent the directions or components for the reduced subspace of the feature space, while the eigenvalues represent the magnitude of those directions. In PCA, the eigenvectors are called principal components.
+
+4.  **Selecting Principal Components**: The eigenvectors are sorted by their eigenvalues in decreasing order to rank the corresponding eigenvalues by their explained variance. The idea is to select the top $k$ eigenvectors that capture the most variance in the data, where $k$ is the number of dimensions that we want to keep.
+
+5.  **Projection Onto the New Feature Space**: The final step is to project the original data onto the new subspace of dimension $k$ that we chose. This is done by multiplying the original data matrix by the matrix containing the top $k$ eigenvectors.
+
+The mathematical representation of the projection is given by:
+
+$$
+Y = X \times P
+$$
+
+where $X$ is the original data matrix with $n$ columns (features), and $P$ is the matrix with the top $k$ eigenvectors (principal components) as its columns. $Y$ is the matrix of the transformed data with respect to the principal components.
+
+In our case, we will use PCA for dimensionality reduction.
+
+```{python}
+def pca_objective(params):
+    n_components = params['n_components']
+    n_estimators = params['n_estimators']
+    max_depth = params['max_depth']
+    min_samples_split = params['min_samples_split']
+    min_samples_leaf = params['min_samples_leaf']
+
+    clf = RandomForestClassifier(
+        n_estimators=n_estimators,
+        max_depth=max_depth,
+        min_samples_split=min_samples_split,
+        min_samples_leaf=min_samples_leaf,
+        random_state=42
+    )
+    final_score=0
+    for i in range(0,20):
+      x_train, x_val, y_train, y_val = train_test_split(x, y, test_size=0.3, random_state=10)
+      scaler = StandardScaler()
+      x_train_scaled = scaler.fit_transform(x_train)
+      x_val_scaled = scaler.transform(x_val)
+
+      pca = PCA(n_components=n_components)
+      x_train_pca = pca.fit_transform(x_train_scaled)
+      x_val_pca = pca.transform(x_val_scaled)
+      clf.fit(x_train_pca, y_train)
+      y_pred = clf.predict(x_val_pca)
+      parameter='micro'
+      score=f1_score(y_val, y_pred, average=parameter)
+      final_score=final_score+score
+    final_score=final_score/20
+
+    return -final_score
+
+```
+
+```{python}
+# Define the search space for hyperparameters
+space = {
+    'n_components': hp.choice('n_components', range(2, 101)),
+    'n_estimators': hp.choice('n_estimators', range(10, 101)),
+    'max_depth': hp.choice('max_depth', range(1, 21)),
+    'min_samples_split': hp.choice('min_samples_split', range(2, 11)),
+    'min_samples_leaf': hp.choice('min_samples_leaf', range(1, 11))
+}
+
+# Use Tree-structured Parzen Estimator (TPE) as the optimization algorithm
+best = fmin(fn=objective, space=space, algo=tpe.suggest, max_evals=100)
+
+print("Best hyperparameters:", best)
+```
+
+As it is obvious, we do not get any better results with the use of PCA.
+
+### Neural Networks
+
+Neural Networks are computational models inspired by the human brain's structure and function. They are composed of nodes, or "neurons," organized in layers: an input layer, one or more hidden layers, and an output layer. Neural networks are particularly powerful in capturing complex patterns and relationships in data, making them highly effective for a wide range of machine learning tasks, including classification, regression, and feature learning.
+
+The mathematical operation in each neuron involves weighted inputs, a bias term, and an activation function. For a given neuron, the process can be described as follows:
+
+1.  **Calculate weighted sum of inputs**: The input values $x_i$ are multiplied by their corresponding weights $w_i$ and summed up along with a bias term $b$:
+
+    $$
+    z = \sum_{i}(w_i \cdot x_i) + b
+    $$
+
+2.  **Apply an activation function**: The activation function $\phi$ is applied to the weighted sum to introduce non-linearity, allowing the network to learn complex patterns:
+
+    $$
+    a = \phi(z)
+    $$
+
+    Common activation functions include Sigmoid, ReLU (Rectified Linear Unit), and Tanh.
+
+The network learns by adjusting the weights and biases to minimize the difference between the actual output and the predicted output. This process is known as backpropagation, where the error is propagated back through the network, allowing the weights to be updated via gradient descent or other optimization algorithms.
+
+In mathematical terms, the objective is to minimize the loss function, which measures the difference between the actual and predicted outputs. For a set of training examples, the goal is to find the set of weights and biases that minimize this loss function.
+
+```{python}
+x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.3, random_state=10)
+x_train, x_val, y_train, y_val = train_test_split(x_train, y_train, test_size=0.3, random_state=10)
+# Define the model
+model = Sequential([
+    Dense(64, activation='relu', input_shape=(18703,)),
+    Dense(32, activation='relu'),
+    Dense(7, activation='softmax')
+])
+
+# Compile the model
+model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+
+# Train the model
+model.fit(x_train, y_train, epochs=100, batch_size=2, validation_data=(x_val, y_val), verbose=2)
+
+# Evaluate the model on the test set
+test_loss, test_accuracy = model.evaluate(x_test, y_test)
+print(f'Test Accuracy: {test_accuracy * 100:.2f}%')
+
+```
+
+```{python}
+x.head()
+```
+
+```{python}
+def neural_network(input_size, n_hidden, hidden_size):
+
+    input_layer = Input(shape=(input_size,))
+    hidden_layer = input_layer
+    for _ in range(0, n_hidden):
+        hidden_layer = Dense(hidden_size, activation='relu')(hidden_layer)
+    output_layer = Dense(7, activation='softmax')(hidden_layer)
+
+    model = Model(inputs=input_layer, outputs=output_layer)
+    return model
+
+def neural_pca_objective(params):
+    n_components = params['n_components']
+    n_hidden = params['n_hidden']
+    hidden_size = params['hidden_size']
+
+    x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.3, random_state=10)
+    x_train, x_val, y_train, y_val = train_test_split(x_train, y_train, test_size=0.3, random_state=10)
+    scaler = StandardScaler()
+    x_train_scaled = scaler.fit_transform(x_train)
+    x_val_scaled = scaler.transform(x_val)
+    x_test_scaled = scaler.transform(x_test)
+
+    pca = PCA(n_components=n_components)
+    x_train_pca = pca.fit_transform(x_train_scaled)
+    x_val_pca = pca.transform(x_val_scaled)
+
+    clf=neural_network(n_components, n_hidden, hidden_size)
+    model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+    model.fit(x_train, y_train, epochs=20, batch_size=2, validation_data=(x_val, y_val), verbose=2)
+    test_loss, test_accuracy = model.evaluate(x_test, y_test)
+
+    return -test_accuracy
+
+```
+
+```{python}
+# Define the search space for hyperparameters
+space = {
+    'n_components': hp.choice('n_components', range(2, 32)),
+    'n_hidden': hp.choice('n_hidden', range(1, 10)),
+    'hidden_size': hp.choice('hidden_size', [32, 64, 128, 256, 512, 1024]),
+}
+
+# Use Tree-structured Parzen Estimator (TPE) as the optimization algorithm
+best = fmin(fn=neural_pca_objective, space=space, algo=tpe.suggest, max_evals=100)
+
+print("Best hyperparameters:", best)
+```
